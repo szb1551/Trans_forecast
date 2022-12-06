@@ -49,7 +49,7 @@ def train_epoch(model, train_dl, optimizer, train_length=30):
     return train_loss / n
 
 
-def save_loss():
+def save_loss(train_length):
     plt.figure(figsize=(10, 10))
     plt.plot(train_epoch_loss)
     plt.legend(['Train Loss'], fontsize=25)
@@ -57,6 +57,7 @@ def save_loss():
     plt.ylabel("MSE Loss", fontsize=25)
     plt.grid()
     plt.savefig('train_result/loss_length{}.jpg'.format(train_length))
+    np.savetxt('train_result/loss_length{}.txt'.format(train_length), train_epoch_loss, fmt='%6f')
 
 
 def test_epoch(model, test_dl, train_length=30, forcast_window=7):
@@ -197,7 +198,6 @@ def plot_raster_models(model, dl, train_length, forcast_window, test=False, n_pl
             # y[batch, seq_len]
             if step >= n_plots:
                 break
-
             with torch.no_grad():
                 # 总预测图
                 plt.figure(figsize=(10, 10))
@@ -228,13 +228,13 @@ def plot_raster_models(model, dl, train_length, forcast_window, test=False, n_pl
                 plt.xticks(x[0], data_list)
                 plt.xticks(rotation=90)
                 plt.plot(x[0][:src.shape[1]].cpu().detach().squeeze(-1).numpy(),
-                         src[0, :, 0, 0].cpu().detach().squeeze(-1).numpy(), 'g--', linewidth=3)
+                         src[0, :, 0, 4].cpu().detach().squeeze(-1).numpy(), 'g--', linewidth=3)
                 # plt.plot(x[0]+forcast_window,tar[0].cpu().detach().numpy(),'g--',linewidth=3)
                 plt.plot(x[0][train_length:train_length + forcast_window],
-                         all_predictions[0, :, 0, 0].cpu().detach().numpy(),
+                         all_predictions[0, :, 0, 4].cpu().detach().numpy(),
                          'b--', linewidth=3)
                 plt.plot(x[0][train_length:train_length + forcast_window],
-                         tar_out[0, :, 0, 0], 'r--', linewidth=3)  # not missing data
+                         tar_out[0, :, 0, 4], 'r--', linewidth=3)  # not missing data
                 plt.xlabel("x", fontsize=20)
                 plt.legend(["$[0,t_0)_{his}$", "$[t_0,t_0+{7})_{predicted}$", "$[t_0,t_0+{7})_{true}$"])
                 plt.grid()
@@ -242,9 +242,9 @@ def plot_raster_models(model, dl, train_length, forcast_window, test=False, n_pl
                     plt.show()
                 else:
                     if test:
-                        plt.savefig('train_result/raster_test_val{}_length{}_point{}.jpg'.format(step + 1, train_length, -1))
+                        plt.savefig('train_result/raster_test_val{}_length{}_point{}.jpg'.format(step + 1, train_length, '04'))
                     else:
-                        plt.savefig('train_result/raster_train_val{}_length{}_point{}.jpg'.format(step + 1, train_length, -1))
+                        plt.savefig('train_result/raster_train_val{}_length{}_point{}.jpg'.format(step + 1, train_length, '04'))
 
 
 def _generate_square_subsequent_mask(self, sz):
@@ -495,7 +495,7 @@ def train_day(Rp_best=10):
                                                                                      np.mean(train_loss), Rp,
                                                                                      end - start))
     print('结束训练时间:', datetime.datetime.now())
-    save_loss()
+    save_loss(train_length)
     torch.save(model, 'train_result/model_last_length{}.h5'.format(train_length))
     plot_models(model, train_dl, train_length, forcast_window)
     plot_models(model, test_dl, train_length, forcast_window, test=True)
@@ -509,10 +509,10 @@ def train_raster_day(Rp_best):
     raster_map = np.load('train_data/raster_map.npy')  # [3444,5,5]
     time_list = np.load('train_data/time_list.npy')  # [3444,]
     max_ = np.max(raster_map, axis=0)
-    np.save('max_raster.npy', max_)
+    np.save('train_data/max_raster.npy', max_)
     raster_map = raster_map / max_
     raster_map[np.isnan(raster_map)] = 0
-    raster_map[raster_map == 0] = np.random.normal(np.zeros_like(raster_map[raster_map == 0]), 0.01)
+    raster_map[raster_map == 0] = np.random.normal(np.zeros_like(raster_map[raster_map == 0]), 0.001)
     raster_map, time_list = get_date_data_PALO(raster_map, time_list, year_begin=2011, year_end=2017, month_end=8,
                                                day_end=1)
     train_dataset, test_dataset, X_train_time, X_test_time = process_raster_data(raster_map, time_list, train_length,
@@ -535,14 +535,14 @@ def train_raster_day(Rp_best):
 
         if Rp_best > Rp:
             Rp_best = Rp
-            torch.save(model, 'train_process/model_epoch{}_length{}_Rp_{:.3f}.h5'.format(e + 1, train_length, Rp))
+            torch.save(model, 'train_process/model_epoch{}_length{}_Rp_{:.4f}.h5'.format(e + 1, train_length, Rp))
         train_epoch_loss.append(np.mean(train_loss))
         end = time.time()
-        print("Epoch {}: Train loss: {:.6f} \t R_p={:.3f}\tcost_time={:.3f}s".format(e + 1,
+        print("Epoch {}: Train loss: {:.6f} \t R_p={:.3f}\tcost_time={:.4f}s".format(e + 1,
                                                                                      np.mean(train_loss), Rp,
-                                                                                     end - start))
+                                                                            end - start))
     print('结束训练时间:', datetime.datetime.now())
-    save_loss()
+    save_loss(train_length)
     torch.save(model, 'train_result/model_last_length{}.h5'.format(train_length))
     plot_raster_models(model, train_dl, train_length, forcast_window)
     plot_raster_models(model, test_dl, train_length, forcast_window, test=True)
