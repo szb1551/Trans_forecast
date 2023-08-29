@@ -10,6 +10,7 @@ import numpy as np
 from graph_utils import normalize_adj
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -19,33 +20,34 @@ class Test_all_models(Train_all_models):
         self.model = model
         self.args = self.get_args()
 
-
-    def test_model(self, device, plot=False):
+    def test_model(self, device, plot=False, random=True):
         if self.args['name'] == 'gcn':
-            train_dl, test_dl = self.get_dl(SensorDataset_GCN)
+            train_dl, test_dl = self.get_dl(SensorDataset_GCN, random=random)
             self.plot_model(self.model, train_dl, self.args, plot=plot)
             self.plot_model(self.model, test_dl, self.args, test=True, plot=plot)
             self.plot_attn(self.model, train_dl, self.args, device=device)
         elif self.args['name'] == 'raster':
-            train_dl, test_dl = self.get_dl(SensorDataset_GCN)
+            train_dl, test_dl = self.get_dl(SensorDataset4, random=random)
             self.plot_model(self.model, train_dl, self.args, plot=plot)
             self.plot_model(self.model, test_dl, self.args, test=True, plot=plot)
             self.plot_attn(self.model, train_dl, self.args, device=device)
         elif self.args['name'] == 'day':
-            train_dl, test_dl = self.get_dl(SensorDataset_GCN)
+            train_dl, test_dl = self.get_dl(SensorDataset4, random=random)
             self.plot_model(self.model, train_dl, self.args, plot=plot)
             self.plot_model(self.model, test_dl, self.args, test=True, plot=plot)
             self.plot_attn(self.model, train_dl, self.args, device=device)
         elif self.args['name'] == 'conv_lstm':
-            train_dl, test_dl = self.get_dl(SensorDataset_GCN, baseline=True)
+            train_dl, test_dl = self.get_dl(SensorDataset4, baseline=True, random=random)
             self.plot_model(self.model, train_dl, self.args, plot=plot)
             self.plot_model(self.model, test_dl, self.args, test=True, plot=plot)
-            self.plot_attn(self.model, train_dl, self.args, device=device)
         elif self.args['name'] == 'gcn_lstm':
-            train_dl, test_dl = self.get_dl(SensorDataset_GCN, baseline=True)
+            train_dl, test_dl = self.get_dl(SensorDataset_GCN, baseline=True, random=random)
             self.plot_model(self.model, train_dl, self.args, plot=plot)
             self.plot_model(self.model, test_dl, self.args, test=True, plot=plot)
-            self.plot_attn(self.model, train_dl, self.args, device=device)
+        test_func = self.choose_test_func(self.args)
+        Rp, RMSE, MAPE = test_func(self.model, test_dl, device)
+        print(Rp, RMSE, MAPE)
+
 
 
 class Compare_test_models:
@@ -54,6 +56,7 @@ class Compare_test_models:
             self.args = get_Compare_long_model_args()
         else:
             self.args = get_Compare_model_args()
+        self.long = long
         self.model_num = model_num
         self.model_list = []
         self.model_args_list = []
@@ -88,14 +91,15 @@ class Compare_test_models:
             self.model_list.append(model)
             self.model_args_list.append(args)
 
-    def get_model_output(self):
+    def get_model_output(self, station=False, grid=False):
         self.plot_initial()
-        outputs_baseline1, self.date_lists = self.plot_test[0].get_output_baseline(max_=self.max_lists[0], time_=True, device=device)
+        outputs_baseline1, self.date_lists = self.plot_test[0].get_output_baseline(max_=self.max_lists[0], time_=True,
+                                                                                   device=device)
         outputs_baseline2 = self.plot_test[1].get_output_baseline(max_=self.gcn_max_, device=device)
         outputs_day = self.plot_test[2].get_output_Transformer(max_=self.day_max_)
         outputs_target = self.plot_test[2].get_target(max_=self.day_max_)
-        outputs_raster = self.plot_test[3].get_output_Transformer(max_=self.raster_max_)
-        outputs_gcn = self.plot_test[4].get_output_Transformer_gcn(max_=self.gcn_max_)
+        outputs_raster = self.plot_test[3].get_output_Transformer(max_=self.raster_max_, grid=grid)
+        outputs_gcn = self.plot_test[4].get_output_Transformer_gcn(max_=self.gcn_max_, station=station)
         # outputs = [outputs_target[:self.model_num], torch.stack(outputs_baseline1[:self.model_num]).sum(axis=-1).sum(axis=-1),
         #            torch.stack(outputs_baseline2[:self.model_num]).sum(axis=2), outputs_day[:self.model_num],
         #            torch.stack(outputs_raster[:self.model_num]).sum(axis=-1).sum(axis=-1), torch.stack(outputs_gcn[:self.model_num]).sum(axis=2)]
@@ -114,7 +118,6 @@ class Compare_test_models:
     #     for i in range(1, self.model_num+1):
     #         RMSE = torch.sqrt(criterion(outputs[i], ))
 
-
     def plot_initial(self):
         self.plot_test = []
         day_test_data = SensorDataset4(self.day_test_dataset, self.test_time_list,
@@ -124,21 +127,96 @@ class Compare_test_models:
         raster_test_data = SensorDataset4(self.raster_test_dataset, self.test_time_list,
                                           train_length=self.args['train_length'],
                                           forecast_window=self.args['forcast_window'])
+        raster_test_data2 = SensorDataset4(self.raster_test_dataset, self.test_time_list,
+                                          train_length=self.args['train_length'],
+                                          forecast_window=self.args['forcast_window'], baseline=True)
         raster_test_dl = DataLoader(raster_test_data, batch_size=64)
+        raster_test_dl2 = DataLoader(raster_test_data2, batch_size=64)
         gcn_test_data = SensorDataset_GCN(self.gcn_test_dataset, self.test_time_list,
                                           train_length=self.args['train_length'],
                                           forecast_window=self.args['forcast_window'])
         gcn_test_dl = DataLoader(gcn_test_data, batch_size=64)
-        dl_lists = [raster_test_dl, gcn_test_dl, day_test_dl, raster_test_dl, gcn_test_dl]
+        gcn_test_data2 = SensorDataset_GCN(self.gcn_test_dataset, self.test_time_list,
+                                          train_length=self.args['train_length'],
+                                          forecast_window=self.args['forcast_window'], baseline=True)
+        gcn_test_dl2 = DataLoader(gcn_test_data2, batch_size=64)
+        dl_lists = [raster_test_dl2, gcn_test_dl2, day_test_dl, raster_test_dl, gcn_test_dl]
         self.max_lists = [self.raster_max_, self.gcn_max_, self.day_max_, self.raster_max_, self.gcn_max_]
         for i in range(self.model_num):
             model_test = plot_all_models(self.model_list[i], dl_lists[i], self.model_args_list[i], n_plots=self.n_plots)
             self.plot_test.append(model_test)
 
+    def plot_station_models(self, station_num=7, fontsize=20):
+        outputs = self.get_model_output(station=True)
+        output_station = [outputs[5][1], outputs[2], outputs[5][0]]
+        colors = ['k', 'b-.v', 'c-.^', 'g--o', 'y-.', 'r--*']
+        linewidths = [5, 3, 3, 3, 3, 3]
+        MarkerSizes = [0, 12, 12, 8, 12, 12]
+        for i in range(self.n_plots):
+            if self.long:
+                plt.figure(figsize=(20, 10))
+            else:
+                plt.figure(figsize=(10, 10))
+            plt.xticks(np.arange(self.args['forcast_window']), self.date_lists[i][self.args['train_length']:])
+            plt.xticks(rotation=45, fontsize=fontsize)
+            plt.yticks(fontsize=fontsize)
+            plt.title('{} Day Station {} Forecast'.format(self.args['forcast_window'], station_num+1), fontsize=30)
+            plt.plot(self.date_lists[i][self.args['train_length']:], output_station[0][i][i][station_num].squeeze(),
+                     colors[0],
+                     linewidth=linewidths[0], markersize=MarkerSizes[0])
+            plt.plot(self.date_lists[i][self.args['train_length']:], output_station[1][i][i][station_num].squeeze(),
+                     colors[2],
+                     linewidth=linewidths[2], markersize=MarkerSizes[2])
+            plt.plot(self.date_lists[i][self.args['train_length']:], output_station[2][i][i][station_num].squeeze(),
+                     colors[5],
+                     linewidth=linewidths[5], markersize=MarkerSizes[5])
+            plt.grid()
+            plt.legend(["$[t_0,t_0+{7})_{true}$", "$[t_0,t_0+{7})_{T-GCN}$", "$[t_0,t_0+{7})_{GCN+Trans}$"],
+                       fontsize=fontsize)
+            plt.subplots_adjust(wspace=0, hspace=0, top=0.94, bottom=0.15)
+            if self.args['save_figure']:
+                plt.savefig('results/compare_results/04/model_compare_station_{}Days_{}.jpg'.format(self.args['forcast_window'], i + 1))
+            else:
+                plt.show()
+
+    def plot_grid_models(self, grid_row=0, grid_col=4, fontsize=20):
+        outputs = self.get_model_output(grid=True)
+        output_station = [outputs[4][1], outputs[1], outputs[4][0]]
+        colors = ['k', 'b-.v', 'c-.^', 'g--o', 'y-.', 'r--*']
+        linewidths = [5, 3, 3, 3, 3, 3]
+        MarkerSizes = [0, 12, 12, 8, 12, 12]
+        for i in range(self.n_plots):
+            if self.long:
+                plt.figure(figsize=(20, 10))
+            else:
+                plt.figure(figsize=(10, 10))
+            plt.xticks(np.arange(self.args['forcast_window']), self.date_lists[i][self.args['train_length']:])
+            plt.xticks(rotation=45, fontsize=fontsize)
+            plt.yticks(fontsize=fontsize)
+            plt.title('{} Day Grids {} Forecast'.format(self.args['forcast_window'], grid_row*5 + grid_col + 1), fontsize=30)
+            plt.plot(self.date_lists[i][self.args['train_length']:], output_station[0][i][i][:, grid_row, grid_col].squeeze(),
+                     colors[0],
+                     linewidth=linewidths[0], markersize=MarkerSizes[0])
+            plt.plot(self.date_lists[i][self.args['train_length']:], output_station[1][i][i][:, grid_row, grid_col].squeeze(),
+                     colors[1],
+                     linewidth=linewidths[1], markersize=MarkerSizes[1])
+            plt.plot(self.date_lists[i][self.args['train_length']:], output_station[2][i][i][:, grid_row, grid_col].squeeze(),
+                     colors[4],
+                     linewidth=linewidths[4], markersize=MarkerSizes[4])
+            plt.grid()
+            plt.legend(["$[t_0,t_0+{7})_{true}$", "$[t_0,t_0+{7})_{CNN+LSTM}$", "$[t_0,t_0+{7})_{CNN+Trans}$"],
+                       fontsize=fontsize)
+            plt.subplots_adjust(wspace=0, hspace=0, top=0.94, bottom=0.15)
+            if self.args['save_figure']:
+                plt.savefig('results/compare_results/05/model_compare_grids_{}Days_{}.jpg'.format(self.args['forcast_window'], i + 1))
+            else:
+                plt.show()
+
     def plot_models(self, fontsize=20):
         outputs = self.get_model_output()
-        colors = ['k', 'b--', 'c--', 'g--', 'y--', 'r--']
-        linewidths = [5,3,3,3,3,3]
+        colors = ['k', 'b-.v', 'c-.^', 'g--o', 'y-.', 'r--*']
+        linewidths = [5, 3, 3, 3, 3, 3]
+        MarkerSizes = [0,12,12,8,12,12]
         print(outputs[0][0].shape)
         for i in range(self.n_plots):
             plt.figure(figsize=(20, 10))
@@ -149,22 +227,25 @@ class Compare_test_models:
             # for j in range(self.model_num+1):
             #     plt.plot(self.date_lists[i][self.args['train_length']:], outputs[j][i].squeeze(), colors=colors[j], linewidth=linewidths[j])
             plt.plot(self.date_lists[i][self.args['train_length']:], outputs[0][i][i].squeeze(), colors[0],
-                     linewidth=linewidths[0])
-            plt.plot(self.date_lists[i][self.args['train_length']:], outputs[1][i][i].sum(axis=-1).sum(axis=-1).squeeze(), colors[1],
-                     linewidth=linewidths[1])
+                     linewidth=linewidths[0], markersize=MarkerSizes[0])
+            plt.plot(self.date_lists[i][self.args['train_length']:],
+                     outputs[1][i][i].sum(axis=-1).sum(axis=-1).squeeze(), colors[1],
+                     linewidth=linewidths[1], markersize=MarkerSizes[1])
             plt.plot(self.date_lists[i][self.args['train_length']:], outputs[2][i][i].sum(axis=0).squeeze(), colors[2],
-                     linewidth=linewidths[2])
+                     linewidth=linewidths[2],markersize=MarkerSizes[2])
             plt.plot(self.date_lists[i][self.args['train_length']:], outputs[3][i][i].squeeze(), colors[3],
-                     linewidth=linewidths[3])
-            plt.plot(self.date_lists[i][self.args['train_length']:], outputs[4][i][i].sum(axis=-1).sum(axis=-1).squeeze(), colors[4],
-                     linewidth=linewidths[4])
+                     linewidth=linewidths[3], markersize=MarkerSizes[3])
+            plt.plot(self.date_lists[i][self.args['train_length']:],
+                     outputs[4][i][i].sum(axis=-1).sum(axis=-1).squeeze(), colors[4],
+                     linewidth=linewidths[4], markersize=MarkerSizes[4])
             plt.plot(self.date_lists[i][self.args['train_length']:], outputs[5][i][i].sum(axis=0).squeeze(), colors[5],
-                     linewidth=linewidths[5])
+                     linewidth=linewidths[5], markersize=MarkerSizes[5])
             plt.grid()
             plt.legend(["$[t_0,t_0+{7})_{true}$", "$[t_0,t_0+{7})_{CNN+LSTM}$", "$[t_0,t_0+{7})_{T-GCN}$",
-                        "$[t_0,t_0+{7})_{Trans}$", "$[t_0,t_0+{7})_{CNN+Trans}$", "$[t_0,t_0+{7})_{GCN+Trans}$"], fontsize=fontsize)
+                        "$[t_0,t_0+{7})_{Trans}$", "$[t_0,t_0+{7})_{CNN+Trans}$", "$[t_0,t_0+{7})_{GCN+Trans}$"],
+                       fontsize=fontsize)
             plt.subplots_adjust(wspace=0, hspace=0, top=0.94, bottom=0.15)
             if self.args['save_figure']:
-                plt.savefig('results/compare_results/03/model_compare_7Days_{}.jpg'.format(i + 1))
+                plt.savefig('results/compare_results/03/model_compare_{}Days_{}.jpg'.format(self.args['forcast_window'], i + 1))
             else:
                 plt.show()

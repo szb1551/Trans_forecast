@@ -91,16 +91,19 @@ class SensorDataset2(Dataset):  # 得到其他数据31
         return sample
 
 
-class SensorDataset4(Dataset):  # 得到其他数据31 得到decoder数据
-    def __init__(self, dataset, time_lists, train_length, forecast_window):
+class SensorDataset4(Dataset):  # 得到其他数据31 得到decoder数据 raster使用
+    def __init__(self, dataset, time_lists, train_length, forecast_window, baseline=False):
         # csv_file = os.path.join(root_dir, csv_name)  # 打开csv文件
         self.src = torch.tensor(dataset[:, :train_length], dtype=torch.float32)
-        self.tar = torch.tensor(dataset[:, train_length-1:], dtype=torch.float32)
+        if baseline:
+            self.tar = torch.tensor(dataset[:, train_length:], dtype=torch.float32)  # [3400, 7, 5, 5]
+        else:
+            self.tar = torch.tensor(dataset[:, train_length - 1:], dtype=torch.float32)
         self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)])
         self.x = torch.tensor(self.x, dtype=torch.float32)
         self.time_list = time_lists
-        print('src:', self.src.shape)
-        print('tar:', self.tar.shape)
+        print('src:', self.src.shape)  # [3400, 30, ...]
+        print('tar:', self.tar.shape)  # [3400, 7, ...]
         print('x:', self.x.shape)
         print('time_list:', self.time_list.shape)
 
@@ -114,6 +117,107 @@ class SensorDataset4(Dataset):  # 得到其他数据31 得到decoder数据
                   self.tar[idx, :],
                   self.time_list[idx, :])
         return sample
+
+
+class SensorDataset_baseline_conv(Dataset):  # 得baseline raster使用
+    def __init__(self, dataset, time_lists, train_length, forecast_window):
+        # dataset [3400, 37, 5, 5]
+        self.src = torch.tensor(dataset[:, :train_length], dtype=torch.float32)  # [3400, 30, 5, 5]
+        self.tar = torch.tensor(dataset[:, train_length:], dtype=torch.float32)  # [3400, 7, 5, 5]
+        self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)])
+        self.x = torch.tensor(self.x, dtype=torch.float32)
+        self.time_list = time_lists
+        print('src:', self.src.shape)  # [3400, 30, ...]
+        print('tar:', self.tar.shape)  # [3400, 7, ...]
+        print('x:', self.x.shape)
+        print('time_list:', self.time_list.shape)
+
+    def __len__(self):
+        # print(len(self.df.groupby(by=["Start"]))) # 3400|37
+        return len(self.tar)
+
+    def __getitem__(self, idx):
+        sample = (self.x[idx, :],
+                  self.src[idx, :],
+                  self.tar[idx, :],
+                  self.time_list[idx, :])
+        return sample
+
+
+class SensorDataset_GCN(Dataset):  # GCN使用
+    def __init__(self, dataset, time_lists, train_length, forecast_window, baseline=False):
+        # csv_file = os.path.join(root_dir, csv_name)  # 打开csv文件
+        self.src = torch.tensor(dataset[:, :, :train_length], dtype=torch.float32)
+        if baseline:
+            self.tar = torch.tensor(dataset[:, :, train_length:], dtype=torch.float32)
+        else:
+            self.tar = torch.tensor(dataset[:, :, train_length - 1:], dtype=torch.float32)
+        self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)])
+        # self.x = torch.tensor(self.x, dtype=torch.float32)
+        self.time_list = time_lists
+        print('src:', self.src.shape)  # [3400, N, 30, ...]
+        print('tar:', self.tar.shape)  # [3400, N, 7, ...]
+        print('x:', self.x.shape)  # [3400, 37]
+        print('time_list:', self.time_list.shape)  # [3400, 37]
+
+    def __len__(self):
+        # print(len(self.df.groupby(by=["Start"]))) # 3400|37
+        return len(self.tar)
+
+    def __getitem__(self, idx):
+        sample = (self.x[idx, :],
+                  self.src[idx, :],
+                  self.tar[idx, :],
+                  self.time_list[idx, :])
+        return sample
+
+
+class SensorDataset_GCN_diff(Dataset):  # GCN使用
+    def __init__(self, dataset, time_lists, train_length, forecast_window, baseline=False):
+        # csv_file = os.path.join(root_dir, csv_name)  # 打开csv文件
+        self.src = torch.tensor(dataset[:, :, :train_length], dtype=torch.float32)
+        if baseline:
+            self.tar = torch.tensor(dataset[:, :, train_length:], dtype=torch.float32)
+        else:
+            self.tar = torch.tensor(dataset[:, :, train_length - 1:], dtype=torch.float32)
+        self.src_diff = torch.tensor(np.diff(self.src))
+        self.tar_diff = torch.tensor(np.diff(self.tar))
+        self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)])
+        # self.x = torch.tensor(self.x, dtype=torch.float32)
+        self.time_list = time_lists
+        print('src_diff:', self.src_diff.shape)  # [3400, N, 30, ...]
+        print('tar_diff:', self.tar_diff.shape)  # [3400, N, 7, ...]
+        print('x:', self.x.shape)  # [3400, 37]
+        print('time_list:', self.time_list.shape)  # [3400, 37]
+
+    def __len__(self):
+        # print(len(self.df.groupby(by=["Start"]))) # 3400|37
+        return len(self.tar)
+
+    def __getitem__(self, idx):
+        sample = (self.x[idx, :],
+                  self.src_diff[idx, :],
+                  self.tar_diff[idx, :],
+                  self.time_list[idx, :],
+                  self.src[idx, :, 0].unsqueeze(-1),
+                  self.tar[idx, :, 1].unsqueeze(-1)
+                  )
+        return sample
+
+
+class all_dataset(Dataset):
+    def __init__(self, dataset, time_list, train_length=30, forecast_window=7):
+        self.dataset = dataset
+        self.time_list = time_list
+
+    def __len__(self):
+        return self.dataset.shape[0]
+
+    def __getitem__(self, idx):
+        sample = (self.dataset[idx, :],
+                  self.time_list[idx, :])
+        return sample
+
 
 class time_series_decoder_paper(Dataset):
     """synthetic time series dataset from section 5.1"""

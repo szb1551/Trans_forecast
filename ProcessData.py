@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
-from joblib import dump
+# from joblib import dump
 from data_handler import get_dataset
 import re
 
@@ -181,16 +181,53 @@ def process_data4(csv_name, training_length, forecast_window):  # 得到初始�
     return train_dataset, test_dataset
 
 
-def process_time(time_list, train_length, forcast_window):  # 得到栅格地图 第一个维度为时间跨度 # [3444, 5, 5]   #2020-12-31
+def process_time(time_list, train_length, forcast_window,
+                 matrix=False):  # 得到栅格地图 第一个维度为时间跨度 # [3444, 5, 5]   #2020-12-31
     print('time_list:', time_list.shape)
     all_time_lags = np.zeros(
         (time_list.shape[0] - (train_length + forcast_window), train_length + forcast_window), dtype=int)
     print('all_time_lags.shape:', all_time_lags.shape)  # [3407. 37]
     for i in range(all_time_lags.shape[0]):
         all_time_lags[i] = time_list[i: i + train_length + forcast_window]  # 批次 + num_lags+prediction_horizont天数
+    if matrix:
+        return all_time_lags
+    # np.save('train_data_matrix/time_matrix_lags.npy', all_time_lags)
+    # np.save('train_data_matrix/time_long_matrix_lags.npy', all_time_lags)
     i_train = all_time_lags.shape[0] - forcast_window  # 3400 # 2020-11-17 2019-9-6----2020-9-6 366+24+30+17=437
     i_test = all_time_lags.shape[0]
 
     X_train_time = all_time_lags[:i_train, :]  # [3400, 37]
     X_test_time = all_time_lags[i_train:i_test, :]  # [7, 37]
     return X_train_time, X_test_time
+
+
+class process_all_time:
+    def __init__(self, time_list, train_length, forecast_window):
+        self.time_list = time_list
+        self.train_length = train_length
+        self.forecast_window = forecast_window
+
+    def get_matrix_time(self):
+        all_time_lags = np.zeros(
+            (self.time_list.shape[0] - (self.train_length + self.forecast_window),
+             self.train_length + self.forecast_window), dtype=int)
+        for i in range(all_time_lags.shape[0]):
+            all_time_lags[i] = self.time_list[i: i + self.train_length + self.forecast_window]
+        return all_time_lags
+
+    def get_process_time(self):
+        print('time_list:', self.time_list.shape)
+        all_time_lags = np.zeros(
+            (self.time_list.shape[0] - (self.train_length + self.forecast_window),
+             self.train_length + self.forecast_window), dtype=int)
+        print('all_time_lags.shape:', all_time_lags.shape)  # [3407. 37]
+        for i in range(all_time_lags.shape[0]):
+            all_time_lags[i] = self.time_list[
+                               i: i + self.train_length + self.forecast_window]  # 批次 + num_lags+prediction_horizont天数
+        i_train = all_time_lags.shape[
+                      0] - self.forecast_window  # 3400 # 2020-11-17 2019-9-6----2020-9-6 366+24+30+17=437
+        i_test = all_time_lags.shape[0]
+
+        X_train_time = all_time_lags[:i_train, :]  # [3400, 37]
+        X_test_time = all_time_lags[i_train:i_test, :]  # [7, 37]
+        return X_train_time, X_test_time

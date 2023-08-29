@@ -76,8 +76,8 @@ def get_graph(data):  # 得到图结构
 
 
 def setup_GCN(data, forecast_horizon, num_lags, time=False):  # 得到图，邻接矩阵，训练测试集
-    G = get_graph(data)
-    # G = nx.read_gpickle('train_data/GCN_Graph.gpickle')
+    # G = get_graph(data)
+    G = nx.read_gpickle('train_data/GCN_Graph.gpickle')
     adj = nx.adjacency_matrix(G)
     number_of_hours = int((data.index.max() - data.index.min()).total_seconds() // (3600 * 24))
     timeseries_ = np.zeros([len(G.nodes()), number_of_hours + 1])  # 节点数与天数，记录当前节点当天的能量和
@@ -96,6 +96,13 @@ def setup_GCN(data, forecast_horizon, num_lags, time=False):  # 得到图，邻�
     max_ = np.max(timeseries_, axis=1)[:,None]
     np.save('train_data/G_max_.npy', max_)
     normalized = timeseries_ / max_
+
+    # timeseries_ones = np.ones(timeseries_.shape)
+    # timeseries_ones = timeseries_+timeseries_ones
+    # timeseries_logs = np.log(timeseries_ones)
+    # np.save('train_data/G_timeseries_log_map.npy', timeseries_logs)
+    # max_logs = np.max(timeseries_logs, axis=1)[:,None]
+    # np.save('train_data/G_max_logs.npy', max_logs)
 
     # normalized = timeseries_ / np.max(timeseries_, axis=1)[:, None]
 
@@ -128,5 +135,5 @@ def setup_GCN(data, forecast_horizon, num_lags, time=False):  # 得到图，邻�
 
 if __name__ == '__main__':
     data = get_dataset('Palo Alto')
-    get_graph(data)
-    # setup_GCN(data, forecast_horizon=7, num_lags=30)
+    # get_graph(data)
+    setup_GCN(data, forecast_horizon=7, num_lags=30)

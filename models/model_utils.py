@@ -1,5 +1,5 @@
-from model import Transformer, Transformer2, Transformer3
-from model import baseline_conv, baseline_gcn
+from model import Transformer, Transformer2, Transformer3, Transformer4, Transformer3_diff
+from model import baseline_conv, baseline_gcn, baseline_conv2
 
 """
     获取模型参数，模型参数设置 
@@ -9,6 +9,8 @@ from model import baseline_conv, baseline_gcn
 def select_model(name, args):
     if name == 'conv_lstm':
         model = baseline_conv(args)
+    elif name == 'conv_lstm2':
+        model = baseline_conv2(args)
     elif name == 'gcn_lstm':
         model = baseline_gcn(args)
     elif name == 'Transformer':
@@ -17,6 +19,10 @@ def select_model(name, args):
         model = Transformer2(args)
     elif name == 'Transformer_gcn':
         model = Transformer3(args)
+    elif name == 'Transformer_gcn_diff':
+        model = Transformer3_diff(args)
+    elif name == 'Transformer_all':
+        model = Transformer4(args)
     else:
         raise ValueError("传入无效参数{}".format(name))
     return model
@@ -25,6 +31,8 @@ def select_model(name, args):
 def get_model_args(name, train_length, forcast_window, X_train=None, adj_matrix=None):
     if name == 'conv_lstm':
         return get_conv_lstm_args(train_length, forcast_window, X_train)
+    elif name == 'conv_lstm2':
+        return get_conv_lstm_2args(train_length, forcast_window, X_train)
     elif name == 'gcn_lstm':
         if adj_matrix is not None:
             return get_gcn_lstm_args(train_length, forcast_window, X_train, adj_matrix)
@@ -32,11 +40,18 @@ def get_model_args(name, train_length, forcast_window, X_train=None, adj_matrix=
             raise ValueError("{}缺少邻接矩阵A".format('name'))
     elif name == 'Transformer':
         return get_Transformer_args(train_length, forcast_window, X_train)
+    elif name == "Transformer_all":
+        return get_Transformer_all_args(train_length, forcast_window, X_train)
     elif name == 'Transformer_cnn':
         return get_Transformer_cnn_args(train_length, forcast_window, X_train)
     elif name == 'Transformer_gcn':
         if adj_matrix is not None:
             return get_Transformer_gcn_args(train_length, forcast_window, X_train, adj_matrix)
+        else:
+            raise ValueError("{}缺少邻接矩阵A".format('name'))
+    elif name == 'Transformer_gcn_diff':
+        if adj_matrix is not None:
+            return get_Transformer_gcn_diff_args(train_length, forcast_window, X_train, adj_matrix)
         else:
             raise ValueError("{}缺少邻接矩阵A".format('name'))
     return
@@ -46,14 +61,22 @@ def get_conv_lstm_args(train_length, forcast_window, X_train):
     args = {'filters': 16, "train_length": train_length, "forcast_window": forcast_window,
             "input_shape": X_train.shape, 'lr': 1e-5, 'epochs': 10000, "lstm_size": 100,
             'conv_feature': 1, 'conv_kernel': 3, 'dropout': 0.1, 'num_lstm': 10, 'padding': 1,
-            'name': 'conv_lstm'}
+            'name': 'conv_lstm', 'weight_decay': 1e-8}
+    return args
+
+
+def get_conv_lstm_2args(train_length, forcast_window, X_train):
+    args = {'filters': 16, "train_length": train_length, "forcast_window": forcast_window,
+            "input_shape": X_train.shape, 'lr': 1e-5, 'epochs': 10000, "input_dim": 1,
+            'conv_kernel': (3, 3), 'num_lstm': 2, 'num_in_out_lstm': 1,
+            'name': 'conv_lstm2', 'weight_decay': 1e-8}
     return args
 
 
 def get_gcn_lstm_args(train_length, forcast_window, X_train, adj_matrix):
     args = {'train_length': train_length, 'forcast_window': forcast_window, 'input_shape': X_train.shape,
             'lr': 1e-4, 'epochs': 10000, 'lstm_size': 100, 'num_lstm': 10, 'dropout': 0.1, 'adj_matrix': adj_matrix,
-            'enc_filters': 64, 'name': 'gcn_lstm'}
+            'enc_filters': 64, 'name': 'gcn_lstm', 'weight_decay': 1e-8}
     return args
 
 
@@ -61,15 +84,23 @@ def get_Transformer_args(train_length, forcast_window, X_train):
     args = {"train_length": train_length, "forcast_window": forcast_window, 'filters': 256,
             "input_shape": X_train.shape, 'lr': 1e-5, 'epochs': 10000, 'conv_feature': 2,
             'conv_kernel': 8, 'n_head': 8, 'num_layers': 4, 'dropout': 0.1, 'embedding_size': 200,
-            'name': 'day'}
+            'name': 'day', 'weight_decay': 1e-8}
+    return args
+
+
+def get_Transformer_all_args(train_length, forcast_window, X_train):
+    args = {"train_length": train_length, "forcast_window": forcast_window, 'filters': 256,
+            "input_shape": X_train.shape, 'lr': 1e-6, 'epochs': 1000, 'conv_feature': 48,
+            'conv_kernel': 10, 'n_head': 8, 'num_layers': 4, 'dropout': 0.1, 'embedding_size': 200,
+            'name': 'day_station', 'weight_decay': 1e-10}
     return args
 
 
 def get_Transformer_cnn_args(train_length, forcast_window, X_train):
-    args = {"train_length": train_length, "forcast_window": forcast_window, 'filters': 16,
-            "input_shape": X_train.shape, 'lr': 1e-5, 'epochs': 10000, 'conv_feature': 1,
+    args = {"train_length": train_length, "forcast_window": forcast_window, 'filters': 8,
+            "input_shape": X_train.shape, 'lr': 1e-5, 'epochs': 1000, 'conv_feature': 1,
             'conv_kernel': 3, 'n_head': 8, 'num_layers': 4, 'dropout': 0.1, 'embedding_size': 200,
-            'padding': 1, 'name': 'raster'}
+            'padding': 1, 'name': 'raster', 'weight_decay': 1e-9}
     return args
 
 
@@ -78,7 +109,16 @@ def get_Transformer_gcn_args(train_length, forcast_window, X_train, adj_matrix):
             "input_shape": X_train.shape, 'lr': 1e-4, 'epochs': 10000, 'conv_feature': 1,
             'n_head': 8, 'num_layers': 4, 'dropout': 0.1, 'dec_filters': 32,
             'adj_matrix': adj_matrix, 'embedding_size': 200, 'embedding_feature': 128,
-            'name': 'gcn'}
+            'name': 'gcn', 'weight_decay': 1e-9}
+    return args
+
+
+def get_Transformer_gcn_diff_args(train_length, forcast_window, X_train, adj_matrix):
+    args = {"train_length": train_length - 1, "forcast_window": forcast_window - 1, 'enc_filters': 64,
+            "input_shape": X_train.shape, 'lr': 1e-5, 'epochs': 10000, 'conv_feature': 1,
+            'n_head': 8, 'num_layers': 4, 'dropout': 0.15, 'dec_filters': 32,
+            'adj_matrix': adj_matrix, 'embedding_size': 200, 'embedding_feature': 128,
+            'name': 'gcn_diff', 'weight_decay': 1e-9}
     return args
 
 
