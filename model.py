@@ -80,10 +80,12 @@ class TimeDistributed_Batch(nn.Module):
         # We have to reshape Y
         if self.batch_first:
             # (samples, timesteps, output_size)
-            output = output.contiguous().view(input_seq.shape[0], -1, output.shape[-3], output.shape[-2], output.shape[-1])
+            output = output.contiguous().view(input_seq.shape[0], -1, output.shape[-3], output.shape[-2],
+                                              output.shape[-1])
         else:
             # (timesteps, samples, output_size)
-            output = output.contiguous().view(-1, input_seq.shape[0], output.shape[-3], output.shape[-2], output.shape[-1])
+            output = output.contiguous().view(-1, input_seq.shape[0], output.shape[-3], output.shape[-2],
+                                              output.shape[-1])
         return output
 
 
@@ -295,7 +297,8 @@ class Transformer3(torch.nn.Module):  # 加入gcn卷积网络
         self.decoder_layer = torch.nn.TransformerDecoderLayer(d_model=args['embedding_feature'], nhead=args['n_head'],
                                                               dropout=args['dropout'])
         self.transformer_decoder = torch.nn.TransformerDecoder(self.decoder_layer, num_layers=args['num_layers'])
-        self.fc_enc_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * args['train_length'], args['embedding_feature'])
+        self.fc_enc_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * args['train_length'],
+                                          args['embedding_feature'])
         self.fc_dec_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * args['forcast_window'],
                                           args['embedding_feature'])
         self.fc1 = torch.nn.Linear(args['embedding_feature'], args['adj_matrix'].shape[0])
@@ -329,6 +332,80 @@ class Transformer3(torch.nn.Module):  # 加入gcn卷积网络
         x_enc = x[:, :self.train_length]  # [batch, 30]
         x_dec = x[:, self.train_length - 1:self.train_length - 1 + tar.shape[2]]  # [batch, 7]
         z_enc = self.gcn_enc(src.unsqueeze(-1))  # [batch, N, T, F]
+        z_enc = z_enc.permute(2, 0, 1, 3).reshape(z_enc.shape[2], z_enc.shape[0], -1)  # [T,B,N,F]->[T,B,NF]
+        z_enc_embedding = self.fc_enc_gcn(z_enc)  # [time, batch, 128]
+        # [batch, time, feature] -> [time, batch, feature]
+        enc_positional_embeddings = self.positional_embedding(x_enc.type(torch.long)).permute(1, 0, 2)
+
+        z_dec = self.gcn_dec(tar.unsqueeze(-1))
+        z_dec = z_dec.permute(2, 0, 1, 3).reshape(z_dec.shape[2], z_dec.shape[0], -1)  # [T,B,N,F]->[T,B,NF]
+        z_dec_embedding = self.fc_dec_gcn(z_dec)
+        dec_positional_embeddings = self.positional_embedding(x_dec.type(torch.long)).permute(1, 0, 2)
+        input_embedding = z_enc_embedding + enc_positional_embeddings
+        tar_embedding = z_dec_embedding + dec_positional_embeddings
+        enc_output = self.transformer_encoder(input_embedding)
+        output = self.transformer_decoder(tgt=tar_embedding, memory=enc_output, tgt_mask=mask)  # [time, batch, 128]
+        # output = self.decoder(tgt=src, memory=output)
+        output = self.fc1(output).permute(1, 2, 0)  # 【batch, 47, time】
+        return output
+
+
+class Transformer3_add(torch.nn.Module):  # 加入gcn卷积网络,与汽车保有量
+    # d_model : number of features
+    # fiture维度不能变动，想加入transformer的话，即时间维度不能当作特征维度
+    def __init__(self, args):
+        super(Transformer3_add, self).__init__()
+        # B, N, T, F
+        # self.input_embedding = TimeDistributed(nn.Conv2d(1, 16, 3, padding=1))
+        # self.flatten = TimeDistributed_FL(nn.Flatten())
+        self.gcn_enc = gcn.GCN_FIGURE(args['adj_matrix'], [args['enc_filters'], args['train_length']],
+                                      [args['conv_feature'], args['enc_filters']], [nn.ReLU(), nn.ReLU()])
+        self.gcn_dec = gcn.GCN_FIGURE(args['adj_matrix'], [args['dec_filters'], args['forcast_window']],
+                                      [args['conv_feature'], args['dec_filters']], [nn.ReLU(), nn.ReLU()])
+        self.encoder_layer = torch.nn.TransformerEncoderLayer(d_model=args['embedding_feature'],
+                                                              nhead=args['n_head'], dropout=args['dropout'])
+        self.transformer_encoder = torch.nn.TransformerEncoder(self.encoder_layer, num_layers=args['num_layers'])
+        self.positional_embedding = torch.nn.Embedding(args['embedding_size'], args['embedding_feature'])
+        self.decoder_layer = torch.nn.TransformerDecoderLayer(d_model=args['embedding_feature'], nhead=args['n_head'],
+                                                              dropout=args['dropout'])
+        self.transformer_decoder = torch.nn.TransformerDecoder(self.decoder_layer, num_layers=args['num_layers'])
+        self.fc_enc_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * (args['train_length'] + args['other']), args['embedding_feature'])
+        self.fc_dec_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * args['forcast_window'],
+                                          args['embedding_feature'])
+        self.fc1 = torch.nn.Linear(args['embedding_feature'], args['adj_matrix'].shape[0])
+        self.train_length = args['train_length']
+        self.forcast_window = args['forcast_window']
+        self.init_weights()
+
+    def init_weights(self):
+        initrange = 0.1
+        self.fc1.bias.data.zero_()
+        self.fc1.weight.data.uniform_(-initrange, initrange)
+
+    def _generate_square_subsequent_mask(self, sz):
+        # torch.triu() 返回右上三角
+        mask = (torch.triu(torch.ones(sz, sz) == 1)).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+    def _generate_forward_mask(self, sz):
+        mask = torch.zeros(sz, sz)
+        for i in range(self.train_length):
+            mask[i][self.train_length:] = 1
+        for i in range(self.train_length, sz):
+            mask[i][i + 1:] = 1
+        mask = mask.float().masked_fill(mask == 1, float('-inf'))
+        return mask
+
+    def forward(self, x, y=torch.zeros(3, 30, 1), src=torch.zeros((3, 47, 30)), tar=torch.zeros((3, 47, 7))):
+        mask = self._generate_square_subsequent_mask(tar.shape[2]).to(tar.device)
+        # print(src.shape) #[batch, 47, 30]
+        x_enc = x[:, :self.train_length]  # [batch, 30]
+        x_dec = x[:, self.train_length - 1:self.train_length - 1 + tar.shape[2]]  # [batch, 7]
+        z_enc = self.gcn_enc(src.unsqueeze(-1))  # [batch, N, T, F]
+        B,N,T = z_enc.size(0), z_enc.size(1), z_enc.size(2)
+        z_enc_time = y.unsqueeze(1).expand(B,N,T,1)  # [batch, :, T ,1]; # 添加的时间汽车保有量维度
+        z_enc = torch.cat((z_enc, z_enc_time), -1)  # [batch, N, T, F+1];
         z_enc = z_enc.permute(2, 0, 1, 3).reshape(z_enc.shape[2], z_enc.shape[0], -1)  # [T,B,N,F]->[T,B,NF]
         z_enc_embedding = self.fc_enc_gcn(z_enc)  # [time, batch, 128]
         # [batch, time, feature] -> [time, batch, feature]

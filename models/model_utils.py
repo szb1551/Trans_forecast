@@ -1,4 +1,4 @@
-from model import Transformer, Transformer2, Transformer3, Transformer4, Transformer3_diff
+from model import Transformer, Transformer2, Transformer3, Transformer4, Transformer3_diff, Transformer3_add
 from model import baseline_conv, baseline_gcn, baseline_conv2
 
 """
@@ -19,6 +19,8 @@ def select_model(name, args):
         model = Transformer2(args)
     elif name == 'Transformer_gcn':
         model = Transformer3(args)
+    elif name == 'Transformer_gcn_add':
+        model = Transformer3_add(args)
     elif name == 'Transformer_gcn_diff':
         model = Transformer3_diff(args)
     elif name == 'Transformer_all':
@@ -45,6 +47,11 @@ def get_model_args(name, train_length, forcast_window, X_train=None, adj_matrix=
     elif name == 'Transformer_cnn':
         return get_Transformer_cnn_args(train_length, forcast_window, X_train)
     elif name == 'Transformer_gcn':
+        if adj_matrix is not None:
+            return get_Transformer_gcn_args(train_length, forcast_window, X_train, adj_matrix)
+        else:
+            raise ValueError("{}缺少邻接矩阵A".format('name'))
+    elif name == 'Transformer_gcn_add':
         if adj_matrix is not None:
             return get_Transformer_gcn_args(train_length, forcast_window, X_train, adj_matrix)
         else:
@@ -109,7 +116,7 @@ def get_Transformer_gcn_args(train_length, forcast_window, X_train, adj_matrix):
             "input_shape": X_train.shape, 'lr': 1e-4, 'epochs': 10000, 'conv_feature': 1,
             'n_head': 8, 'num_layers': 4, 'dropout': 0.1, 'dec_filters': 32,
             'adj_matrix': adj_matrix, 'embedding_size': 200, 'embedding_feature': 128,
-            'name': 'gcn', 'weight_decay': 1e-9}
+            'name': 'gcn', 'weight_decay': 1e-9, 'other': 1}
     return args
 
 
