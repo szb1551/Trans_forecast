@@ -1,0 +1,5 @@
+networkx
+numpy
+matplotlib
+pytorch 1.7.1
+pandas

@@ -16,6 +16,8 @@ def get_dataset(name):
         return get_dundee()
     elif name == 'Perth':
         return get_perth()
+    elif name == 'Dalian':
+        return get_Dalian()
 
 
 def get_palo_alto():
@@ -121,5 +123,20 @@ def get_perth():
     return Perth
 
 
+# 获取大连读取数据，从csv中读取map
+def get_Dalian():
+    Dalian_1 = pd.read_excel("data/数据源/zuobiaodaoluxinxi.xlsx")
+    Dalian = pd.read_csv("data/数据源/Dalian Intersection.csv")
+    print(Dalian_1)
+    n = len(Dalian_1['Unnamed: 0'])
+    map = np.zeros((n, n))
+    for i in range(n):
+        for j in range(1, n+1):
+            if Dalian_1.iloc[i, j] == 1:
+                map[i][j-1] = 1
+    return Dalian, map
+
+
 if __name__ == '__main__':
-    get_palo_alto()
+    # get_palo_alto()
+    get_Dalian()
