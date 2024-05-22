@@ -1,4 +1,6 @@
-data
+data/数据源/*.txt
+data/数据源/*.png
+data/数据源/*.docx
 results
 server_result
 split_data
