@@ -7,12 +7,14 @@ from math import sin, cos, sqrt, atan2, radians
 from ProcessData import process_time
 from data_handler import get_dataset
 import os
+import matplotlib
 import matplotlib.pyplot as plt
 import pickle
+import re
 
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
-
+matplotlib.use('TkAgg')
 """
 将数据data处理为图结构
 """
