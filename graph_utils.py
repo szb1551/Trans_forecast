@@ -11,6 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import pickle
 import re
+import xml.etree.ElementTree as ET
 
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
 plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
@@ -18,6 +19,14 @@ matplotlib.use('TkAgg')
 """
 将数据data处理为图结构
 """
+Ele_hyd = 2
+Electric_period = 0.4
+Hydrogen_period = 0.1
+Electric_power = 94.3 #（kwh）
+Hydrogen_power = 122.7 #（L）
+demand_pro = 0.2 # 充电需求概率
+once_elec = 0.7 # 一次充的电量
+once_hyd = 0.9 # 一次加氢的比例，氢和油的时间差不多
 
 
 def euclidian_dist(node_x, node_y):  # 边的权重
@@ -184,6 +193,110 @@ def get_graph_Dalian(data, data_map, time=False, figure=True):
     return G, normalize_adj(adj).todense()  # todense稠密表示
 
 
+def get_graph_Dalian(data, data_map, forecast_horizon, num_lags, time=False):
+    G, adj = get_graph_Dalian(data, data_map)
+    # 总天数的数量，这地方可以尝试修改特化一下
+    number_of_hours = int((data.index.max() - data.index.min()).total_seconds() // 3600)
+    timeseries_ = np.zeros([len(G.nodes()), number_of_hours + 1, Ele_hyd])  # 节点数与天数，记录当前节点当天的能量和
+    start_time = data.index.min()
+    time_list = [] # 用来加载时间
+    num = re.compile(r"\d+")
+    for i in range(0, number_of_hours + 1):
+        timewindow_start = start_time + timedelta(hours=i)
+        # num_time = int(''.join(num.findall(str(timewindow_start))[:3]))
+        # time_list.append(num_time)
+        current = data[(data.index == timewindow_start)]
+
+        for k, node in enumerate(G.nodes()):
+            tmp = current[G.nodes[node]['ID'] == current['ID']]
+            timeseries_[k, i, 0] = np.sum(tmp['traffic flow']) * Electric_period * Electric_power
+            timeseries_[k, i, 1] = np.sum(tmp['traffic flow']) * Hydrogen_period * Hydrogen_power
+
+    max_ = np.max(timeseries_, axis=-1)[:, None]
+    # np.save('train_data/G_max_.npy', max_)
+    normalized = timeseries_ / max_
+
+    NUM_LAGS = num_lags
+
+    n_nodes = len(G.nodes())
+
+    matrix_lags = np.zeros(
+        (timeseries_.shape[1] - (NUM_LAGS + forecast_horizon), timeseries_.shape[0], NUM_LAGS + forecast_horizon, Ele_hyd))
+    STEPS_AHEAD = math.floor(matrix_lags.shape[0]*0.2)
+    i_train = matrix_lags.shape[0] - STEPS_AHEAD
+    i_test = matrix_lags.shape[0]
+
+    for i in range(matrix_lags.shape[0]):
+        matrix_lags[i] = normalized[:, i:i + NUM_LAGS + forecast_horizon]
+
+    # ---------------- Train/test split
+    train_dataset = matrix_lags[:i_train]  # [batch, 47, 37]
+    test_dataset = matrix_lags[i_train:]  # [batch, 47, 37]
+
+    print('GCN_train_dataset:', train_dataset.shape) #[batch, nodes, time_series, Ele and hye]
+    print('GCN_test_dataset:', test_dataset.shape)
+    if time:
+        # timelist = np.load('train_data/time_list.npy')
+        time_list = np.array(time_list)
+        X_train_time, X_test_time = process_time(time_list, train_length=num_lags, forcast_window=forecast_horizon)
+        return train_dataset, test_dataset, X_train_time, X_test_time
+    return adj, train_dataset, test_dataset
+
+
+# 按概率生成一个介于[-0.1, 0.1]的随机数，
+# 概率越接近1，数值越接近0.1
+def generate_random_number(probability_close_to_one):
+    if not (0 <= probability_close_to_one <= 1):
+        raise ValueError("Probability must be between 0 and 1.")
+
+    # Generate a random float in the range [0, 1)
+    rand_val = np.random.rand()
+
+    # If the random value is less than the specified probability,
+    # we lean towards 0.1; otherwise, we lean towards -0.1.
+    if rand_val < probability_close_to_one:
+        # Generate random float in [0, 0.1]
+        return np.random.uniform(0, 0.1)
+    else:
+        # Generate random float in [-0.1, 0]
+        return np.random.uniform(-0.1, 0)
+def get_graph_Dalian_xml(data_xml, sim_xml, time=False):
+    tree = ET.parse(data_xml)
+    sim = ET.parse(sim_xml)
+    root = tree.getroot()
+    sim_root = sim.getroot()
+    timeseries_ = np.zeros([150, 2]) #【节点， 车流量，长度】
+    max_length = 0
+    edges = {}
+    for edge in root.findall('.//edge'):
+        edges[edge.get('id')] = float(edge.find('lane').get('length'))
+        max_length = max(max_length, float(edge.find('lane').get('length')))
+    routes = sim_root.findall('./route')
+    map = dict()
+    print(routes)
+    for id in edges.keys():
+        for route in routes:
+            if route.get('edges') == id:
+                map[id] = route.get('id')
+    for id, value in map.items():
+        print(id, value)
+        begin = int(id.split('to')[0])
+        end = int(id.split('to')[-1])
+
+        pro = edges[id]/max_length
+        rand = generate_random_number(pro)
+        tmp_elec = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (demand_pro+rand)  * Electric_power * Electric_period * (once_elec+rand)
+        tmp_hyd = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (demand_pro+rand)  * Hydrogen_power * Hydrogen_period * (once_hyd+rand)
+        timeseries_[begin-1][0] = timeseries_[begin-1][0] + tmp_elec # 统计所有的车流量的电负荷
+        timeseries_[end-1][0] = timeseries_[end-1][0] + tmp_elec
+        timeseries_[begin-1][1] = timeseries_[begin-1][1] + tmp_hyd # 统计车流量的氢负荷
+        timeseries_[end-1][1] = timeseries_[end-1][1] + tmp_hyd
+
+    print(timeseries_) # 返回路口节点的车流量和路口的路径长度？
+    return timeseries_
+
+
+
 def test_loadG(G_path='train_data/GCN_Dalian_Graph.pkl'):
     with open(G_path, 'rb') as f:
         G = pickle.load(f)
@@ -191,9 +304,7 @@ def test_loadG(G_path='train_data/GCN_Dalian_Graph.pkl'):
 
 
 if __name__ == '__main__':
-    # data = get_dataset('Palo Alto')
-    # get_graph(data)
     # setup_GCN(data, forecast_horizon=7, num_lags=30)
-    data, data_map = get_dataset('Dalian')
-    get_graph_Dalian(data, data_map)
-    # test_loadG()
+    # data, data_map = get_dataset('Dalian')
+    # get_graph_Dalian(data, data_map)
+    get_graph_Dalian_xml("network.net.xml", "vehicle_routes.rou.xml")

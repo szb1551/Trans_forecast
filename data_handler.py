@@ -1,11 +1,9 @@
 import pandas as pd
 from data_utils import *
-
 """
     读入csv数据并对数据的表格内容进行预处理工作，不改变原表格的内容。
     First
 """
-
 
 def get_dataset(name):
     if name == 'Palo Alto':
@@ -131,10 +129,23 @@ def get_Dalian():
     n = len(Dalian_1['Unnamed: 0'])
     map = np.zeros((n, n))
     for i in range(n):
-        for j in range(1, n+1):
+        for j in range(1, n + 1):
             if Dalian_1.iloc[i, j] == 1:
-                map[i][j-1] = 1
+                map[i][j - 1] = 1
     return Dalian, map
+
+
+# 获取大连路口交通流数据信息，并转为电氢负荷数据信息
+def get_Dalian_traffic(Electric_period=0.25, Hydrogen_period=0.05, Electric_power=150, Hydrogen_power=100):
+    Dalian_traffic = pd.read_csv("data/数据源/Dalian path.csv")
+    n = len(Dalian_traffic)
+    m = len(Dalian_traffic[0])
+    demand_series = np.zeros((n, m, 2))
+    for i in range(n):
+        for j in range(m):
+            demand_series[i][j][0] = Dalian_traffic.iloc[i, j] * Electric_period * Electric_power
+            demand_series[i][j][1] = Dalian_traffic.iloc[i, j] * Hydrogen_period * Hydrogen_power
+    return demand_series
 
 
 if __name__ == '__main__':
