@@ -124,7 +124,7 @@ def get_perth():
 # 获取大连读取数据，从csv中读取map
 def get_Dalian():
     Dalian_1 = pd.read_excel("data/数据源/zuobiaodaoluxinxi.xlsx")
-    Dalian = pd.read_csv("data/数据源/Dalian Intersection.csv")
+    Dalian = pd.read_csv("data/数据源/Sorted_Dalian Intersection.csv")
     print(Dalian_1)
     n = len(Dalian_1['Unnamed: 0'])
     map = np.zeros((n, n))

@@ -1,7 +1,7 @@
 import openpyxl
 import xml.etree.ElementTree as ET
 import math
-
+from math import sin, atan2, sqrt, cos
 
 def create_node_xml(node_id, x, y):
     node_elem = ET.Element('junction')
@@ -54,23 +54,54 @@ def write_sumo_network(nodes, edges, output_file):
     tree.write(output_file, encoding="utf-8", xml_declaration=True)
 
 def lat_lon_to_meters(lat, lon):
-    center_latitude = 121.573191  # Example latitude
-    center_longitude = 38.946204  # Example longitude
+    center_latitude = 38.84297  # Example latitude
+    center_longitude = 121.175168  # Example longitude
     # Convert latitude and longitude to meters relative to the center point
     lat_m = (lat - center_latitude) * 111000  # Approximate conversion: 1 degree of latitude ≈ 111000 meters
     lon_m = (lon - center_longitude) * 111000 * math.cos(math.radians(center_latitude))  # Corrected for longitude
     return lat_m, lon_m
 
+def distance_in_meters(lat1, lon1, lat2, lon2):  # 返回两点的半正弦距离
+    R = 6373.0
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    distance = R * c
+    return distance
+
+
+# 定义一个函数用来读取、排序并输出结果
+def sort_by_latitude(filename='data/数据源/道路信息.txt'):
+    with open(filename, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    # 使用lambda函数对行进行排序
+    # 每一行按照逗号分割后，经度信息是第二个元素（索引为1，因为索引是从0开始的）
+    # 将纬度字符串转换为浮点数进行比较
+    sorted_lines = sorted(lines, key=lambda line: float(line.split(',')[1]))
+
+    # 将排序后的结果写回到一个新文件，或者按需求处理
+    with open('data/数据源/sorted_道路信息.txt', 'w', encoding='utf-8') as sorted_file:
+        for line in sorted_lines:
+            sorted_file.write(line)
+
+    print(f"文件已排序完成，结果保存在：{filename}")
+
 def main():
     try:
         # Read latitude and longitude data
         nodes = []
-        with open('data/数据源/道路信息.txt', 'r', encoding='utf-8') as file:
+
+        with open('data/数据源/sorted_道路信息.txt', 'r', encoding='utf-8') as file:
             for i, line in enumerate(file, 1):
                 parts = line.strip().split(',')
-                x = float(parts[1])
-                y = float(parts[2])
-                x, y = lat_lon_to_meters(x, y)
+                x = float(parts[1]) #返回经度
+                y = float(parts[2]) #返回纬度
+                y, x = lat_lon_to_meters(y, x)
                 nodes.append(create_node_xml(i, x, y))
 
         # Read adjacency matrix data
@@ -98,4 +129,5 @@ def main():
         print(f"Error: {e}. Please make sure input files exist.")
 
 if __name__ == '__main__':
+    # sort_by_latitude()
     main()

@@ -86,14 +86,15 @@ def write_rou_file(routes, vehicles, output_file):
 
 def main():
     network_file = 'network.net.xml'  # Path to the network file
-    output_file = 'vehicle_routes.rou.xml'  # Output rou.xml file
+    output_file = 'TrafficSim/vehicle_routes.rou.xml'  # Output rou.xml file
     num_routes = 5  # Number of routes to generate
-    num_vehicles_per_route = 3  # Number of vehicles per route
+    num_vehicles_per_route = 50  # Number of vehicles per route
     min_nodes = 1  # Minimum number of nodes in a route
 
     # Extract edge IDs and connections from the network file
     edges = extract_edges_and_connections(network_file)
 
+    num_routes = len(edges)
     # Generate routes based on edges and connections
     routes = generate_routes(edges, num_routes, min_nodes)
 
