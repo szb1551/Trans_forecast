@@ -775,8 +775,9 @@ def process_gcn_data(G_timeseries_map, time_list, training_length, forecast_wind
         return train_dataset, test_dataset, X_train_time, X_test_time
     return train_dataset, test_dataset
 
+
 def process_gcn_log_data(G_timeseries_log_map, time_list, training_length, forecast_window,
-                     time=False, matrix=False):  # gcn 通过给定数组进行dataset分类
+                         time=False, matrix=False):  # gcn 通过给定数组进行dataset分类
     matrix_lags = np.zeros(
         (G_timeseries_log_map.shape[-1] - (training_length + forecast_window),
          G_timeseries_log_map.shape[0], training_length + forecast_window))
@@ -1182,7 +1183,7 @@ def Train_split_select(dataset_num=0, name=''):  # 将训练，测试集18年前
     if dataset_num == 0:
         day_map = np.load('train_data/normalized.npy')
         day_map, time_list = get_date_data_PALO(day_map, time_list, year_begin=2011, year_end=2017, month_end=8,
-                                                   day_end=1)
+                                                day_end=1)
         dataset, time_list = process_data(day_map, time_list, train_length, forcast_window, matrix=True)
         max_ = np.load('train_data/max_.npy')
 
@@ -1204,7 +1205,7 @@ def Train_split_select(dataset_num=0, name=''):  # 将训练，测试集18年前
                                                         month_end=8,
                                                         day_end=1)
         dataset, time_list = process_gcn_data(G_timeseries_map, time_list, train_length,
-                         forcast_window, matrix=True)
+                                              forcast_window, matrix=True)
     elif dataset_num == 3:
         G_timeseries_map = np.load('train_data/G_timeseries_log_map.npy')
         max_ = np.load('train_data/G_max_logs.npy')
@@ -1213,7 +1214,7 @@ def Train_split_select(dataset_num=0, name=''):  # 将训练，测试集18年前
                                                         month_end=8,
                                                         day_end=1)
         dataset, time_list = process_gcn_log_data(G_timeseries_map, time_list, train_length,
-                         forcast_window, matrix=True)
+                                                  forcast_window, matrix=True)
         os.system('pause')
 
     else:

@@ -369,7 +369,8 @@ class Transformer3_add(torch.nn.Module):  # 加入gcn卷积网络,与汽车保�
         self.decoder_layer = torch.nn.TransformerDecoderLayer(d_model=args['embedding_feature'], nhead=args['n_head'],
                                                               dropout=args['dropout'])
         self.transformer_decoder = torch.nn.TransformerDecoder(self.decoder_layer, num_layers=args['num_layers'])
-        self.fc_enc_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * (args['train_length'] + args['other']), args['embedding_feature'])
+        self.fc_enc_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * (args['train_length'] + args['other']),
+                                          args['embedding_feature'])
         self.fc_dec_gcn = torch.nn.Linear(args['adj_matrix'].shape[0] * args['forcast_window'],
                                           args['embedding_feature'])
         self.fc1 = torch.nn.Linear(args['embedding_feature'], args['adj_matrix'].shape[0])
@@ -403,8 +404,8 @@ class Transformer3_add(torch.nn.Module):  # 加入gcn卷积网络,与汽车保�
         x_enc = x[:, :self.train_length]  # [batch, 30]
         x_dec = x[:, self.train_length - 1:self.train_length - 1 + tar.shape[2]]  # [batch, 7]
         z_enc = self.gcn_enc(src.unsqueeze(-1))  # [batch, N, T, F]
-        B,N,T = z_enc.size(0), z_enc.size(1), z_enc.size(2)
-        z_enc_time = y.unsqueeze(1).expand(B,N,T,1)  # [batch, :, T ,1]; # 添加的时间汽车保有量维度
+        B, N, T = z_enc.size(0), z_enc.size(1), z_enc.size(2)
+        z_enc_time = y.unsqueeze(1).expand(B, N, T, 1)  # [batch, :, T ,1]; # 添加的时间汽车保有量维度
         z_enc = torch.cat((z_enc, z_enc_time), -1)  # [batch, N, T, F+1];
         z_enc = z_enc.permute(2, 0, 1, 3).reshape(z_enc.shape[2], z_enc.shape[0], -1)  # [T,B,N,F]->[T,B,NF]
         z_enc_embedding = self.fc_enc_gcn(z_enc)  # [time, batch, 128]
@@ -493,6 +494,93 @@ class Transformer3_diff(torch.nn.Module):  # 加入gcn卷积网络
         output = self.transformer_decoder(tgt=tar_embedding, memory=enc_output, tgt_mask=mask)  # [time, batch, 128]
         # output = self.decoder(tgt=src, memory=output)
         output = self.fc1(output).permute(1, 2, 0)  # 【batch, 47, time】
+        return output
+
+
+class Transformer_Dalian(torch.nn.Module):
+    # d_model : number of features
+    # 用作专门处理大连电氢负荷数据的模型
+    def __init__(self, args):
+        super(Transformer_Dalian, self).__init__()
+        # B, N, T, F
+        # self.input_embedding = TimeDistributed(nn.Conv2d(1, 16, 3, padding=1))
+        # self.flatten = TimeDistributed_FL(nn.Flatten())
+        self.gcn_enc = gcn.GCN_FIGURE(args['adj_matrix'], [args['enc_filters'], args['train_length']],
+                                      [args['conv_feature'] + args['Hydrogen'],
+                                       (args['conv_feature'] + args['Hydrogen']) * args['enc_filters']],
+                                      [nn.ReLU(), nn.ReLU()], variates=1 + args['Hydrogen'])
+        self.gcn_dec = gcn.GCN_FIGURE(args['adj_matrix'], [args['dec_filters'], args['forcast_window']],
+                                      [args['conv_feature'] + args['Hydrogen'],
+                                       (args['conv_feature'] + args['Hydrogen']) * args['dec_filters']],
+                                      [nn.ReLU(), nn.ReLU()], variates=1 + args['Hydrogen'])
+        self.encoder_layer = torch.nn.TransformerEncoderLayer(d_model=args['embedding_feature'],
+                                                              nhead=args['n_head'], dropout=args['dropout'])
+        self.transformer_encoder = torch.nn.TransformerEncoder(self.encoder_layer, num_layers=args['num_layers'])
+        self.positional_embedding = torch.nn.Embedding(args['embedding_size'], args['embedding_feature'])
+        self.decoder_layer = torch.nn.TransformerDecoderLayer(d_model=args['embedding_feature'], nhead=args['n_head'],
+                                                              dropout=args['dropout'])
+        self.transformer_decoder = torch.nn.TransformerDecoder(self.decoder_layer, num_layers=args['num_layers'])
+        self.fc_enc_gcn = torch.nn.Linear(
+            (args['conv_feature'] + args['Hydrogen']) * args['adj_matrix'].shape[0] * args['train_length'],
+            args['embedding_feature'])
+        self.fc_dec_gcn = torch.nn.Linear(
+            (args['conv_feature'] + args['Hydrogen']) * args['adj_matrix'].shape[0] * args['forcast_window'],
+            args['embedding_feature'])
+        self.fc1 = torch.nn.Linear(args['embedding_feature'],
+                                   args['adj_matrix'].shape[0] * (args['conv_feature'] + args['Hydrogen']))
+        self.train_length = args['train_length']
+        self.forcast_window = args['forcast_window']
+        self.init_weights()
+
+    def init_weights(self):
+        initrange = 0.1
+        self.fc1.bias.data.zero_()
+        self.fc1.weight.data.uniform_(-initrange, initrange)
+
+    def _generate_square_subsequent_mask(self, sz):
+        # torch.triu() 返回右上三角
+        mask = (torch.triu(torch.ones(sz, sz) == 1)).transpose(0, 1)
+        mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+        return mask
+
+    def _generate_forward_mask(self, sz):
+        mask = torch.zeros(sz, sz)
+        for i in range(self.train_length):
+            mask[i][self.train_length:] = 1
+        for i in range(self.train_length, sz):
+            mask[i][i + 1:] = 1
+        mask = mask.float().masked_fill(mask == 1, float('-inf'))
+        return mask
+
+    def forward(self, x, src=torch.zeros((3, 47, 30, 2)), tar=torch.zeros((3, 47, 7, 2))):
+        mask = self._generate_square_subsequent_mask(tar.shape[2]).to(tar.device)
+        # print(src.shape) #[batch, Node, Time, feature]
+        x_enc = x[:, :self.train_length]  # [batch, 30]
+        if self.train_length - 1 + tar.shape[2] <= x.shape[-1]:
+            x_dec = x[:, self.train_length - 1:self.train_length - 1 + tar.shape[2]]  # [batch, 7]
+        else:
+            x_dec = x[:, self.train_length - 1:self.train_length - 1 + tar.shape[2]]  # [batch, 7]
+            extra_values = torch.zeros((x.shape[0], self.train_length - 1 + tar.shape[2] - x.shape[-1]))
+            for i in range(self.train_length - 1 + tar.shape[2] - x.shape[-1]):
+                extra_values[:, i] = x[:, -1] + i + 1
+            x_dec = torch.cat((x_dec, extra_values.to(tar.device)), dim=-1)
+        z_enc = self.gcn_enc(src)  # [batch, N, T, F]
+        z_enc = z_enc.permute(2, 0, 1, 3).reshape(z_enc.shape[2], z_enc.shape[0], -1)  # [T,B,N,F]->[T,B,NF]
+        z_enc_embedding = self.fc_enc_gcn(z_enc)  # [time, batch, 128]
+        # [batch, time, feature] -> [time, batch, feature]
+        enc_positional_embeddings = self.positional_embedding(x_enc.type(torch.long)).permute(1, 0, 2)
+
+        z_dec = self.gcn_dec(tar)
+        z_dec = z_dec.permute(2, 0, 1, 3).reshape(z_dec.shape[2], z_dec.shape[0], -1)  # [T,B,N,F]->[T,B,NF]
+        z_dec_embedding = self.fc_dec_gcn(z_dec)
+        dec_positional_embeddings = self.positional_embedding(x_dec.type(torch.long)).permute(1, 0, 2)
+        input_embedding = z_enc_embedding + enc_positional_embeddings
+        tar_embedding = z_dec_embedding + dec_positional_embeddings
+        enc_output = self.transformer_encoder(input_embedding)
+        output = self.transformer_decoder(tgt=tar_embedding, memory=enc_output, tgt_mask=mask)  # [time, batch, 128]
+        output = self.fc1(output)  # 【time, batch, node*feature】
+        output = output.reshape((output.shape[0], output.shape[1], -1, 2))  # [time, batch, nodes, 2]
+        output = output.permute(1, 2, 0, 3)  # [batch, nodes, time , other]
         return output
 
 

@@ -152,11 +152,14 @@ class SensorDataset_GCN(Dataset):  # GCN使用
             self.tar = torch.tensor(dataset[:, :, train_length:], dtype=torch.float32)
         else:
             self.tar = torch.tensor(dataset[:, :, train_length - 1:], dtype=torch.float32)
-        self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)])
+        # self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)]) # 只会被当作位置编码
+        self.x = torch.zeros((self.src.shape[0], train_length+forecast_window))
+        for i in range(self.src.shape[0]):
+            self.x[i] = torch.arange(i, i+train_length+forecast_window)
         # self.x = torch.tensor(self.x, dtype=torch.float32)
         self.time_list = time_lists
         print('src:', self.src.shape)  # [3400, N, 30, ...]
-        print('tar:', self.tar.shape)  # [3400, N, 7, ...]
+        print('tar:', self.tar.shape)  # [3400, N, 8, ...]
         print('x:', self.x.shape)  # [3400, 37]
         print('time_list:', self.time_list.shape)  # [3400, 37]
 

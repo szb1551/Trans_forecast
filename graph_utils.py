@@ -22,11 +22,11 @@ matplotlib.use('TkAgg')
 Ele_hyd = 2
 Electric_period = 0.4
 Hydrogen_period = 0.1
-Electric_power = 94.3 #（kwh）
-Hydrogen_power = 122.7 #（L）
-demand_pro = 0.2 # 充电需求概率
-once_elec = 0.7 # 一次充的电量
-once_hyd = 0.9 # 一次加氢的比例，氢和油的时间差不多
+Electric_power = 94.3  # （kwh）
+Hydrogen_power = 122.7  # （L）
+demand_pro = 0.2  # 充电需求概率
+once_elec = 0.7  # 一次充的电量
+once_hyd = 0.9  # 一次加氢的比例，氢和油的时间差不多
 
 
 def euclidian_dist(node_x, node_y):  # 边的权重
@@ -199,7 +199,7 @@ def get_graph_Dalian_Deal(data, data_map, forecast_horizon, num_lags, time=False
     number_of_hours = int((data.index.max() - data.index.min()).total_seconds() // 3600)
     timeseries_ = np.zeros([len(G.nodes()), number_of_hours + 1, Ele_hyd])  # 节点数与天数，记录当前节点当天的能量和
     start_time = data.index.min()
-    time_list = [] # 用来加载时间
+    time_list = []  # 用来加载时间
     num = re.compile(r"\d+")
     for i in range(0, number_of_hours + 1):
         timewindow_start = start_time + timedelta(hours=i)
@@ -221,8 +221,9 @@ def get_graph_Dalian_Deal(data, data_map, forecast_horizon, num_lags, time=False
     n_nodes = len(G.nodes())
 
     matrix_lags = np.zeros(
-        (timeseries_.shape[1] - (NUM_LAGS + forecast_horizon), timeseries_.shape[0], NUM_LAGS + forecast_horizon, Ele_hyd))
-    STEPS_AHEAD = math.floor(matrix_lags.shape[0]*0.2)
+        (timeseries_.shape[1] - (NUM_LAGS + forecast_horizon), timeseries_.shape[0], NUM_LAGS + forecast_horizon,
+         Ele_hyd))
+    STEPS_AHEAD = math.floor(matrix_lags.shape[0] * 0.2)
     i_train = matrix_lags.shape[0] - STEPS_AHEAD
     i_test = matrix_lags.shape[0]
 
@@ -233,7 +234,7 @@ def get_graph_Dalian_Deal(data, data_map, forecast_horizon, num_lags, time=False
     train_dataset = matrix_lags[:i_train]  # [batch, 47, 37]
     test_dataset = matrix_lags[i_train:]  # [batch, 47, 37]
 
-    print('GCN_train_dataset:', train_dataset.shape) #[batch, nodes, time_series, Ele and hye]
+    print('GCN_train_dataset:', train_dataset.shape)  # [batch, nodes, time_series, Ele and hye]
     print('GCN_test_dataset:', test_dataset.shape)
     if time:
         # timelist = np.load('train_data/time_list.npy')
@@ -260,12 +261,14 @@ def generate_random_number(probability_close_to_one):
     else:
         # Generate random float in [-0.1, 0]
         return np.random.uniform(-0.1, 0)
+
+
 def get_graph_Dalian_xml(data_xml, sim_xml, time=False):
     tree = ET.parse(data_xml)
     sim = ET.parse(sim_xml)
     root = tree.getroot()
     sim_root = sim.getroot()
-    timeseries_ = np.zeros([150, 2]) #【节点， 车流量，长度】
+    timeseries_ = np.zeros([150, 2])  # 【节点， 车流量，长度】
     max_length = 0
     edges = {}
     for edge in root.findall('.//edge'):
@@ -283,58 +286,69 @@ def get_graph_Dalian_xml(data_xml, sim_xml, time=False):
         begin = int(id.split('to')[0])
         end = int(id.split('to')[-1])
 
-        pro = edges[id]/max_length
+        pro = edges[id] / max_length
         rand = generate_random_number(pro)
-        tmp_elec = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (demand_pro+rand)  * Electric_power * Electric_period * (once_elec+rand)
-        tmp_hyd = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (demand_pro+rand)  * Hydrogen_power * Hydrogen_period * (once_hyd+rand)
-        timeseries_[begin-1][0] = timeseries_[begin-1][0] + tmp_elec # 统计所有的车流量的电负荷
-        timeseries_[end-1][0] = timeseries_[end-1][0] + tmp_elec
-        timeseries_[begin-1][1] = timeseries_[begin-1][1] + tmp_hyd # 统计车流量的氢负荷
-        timeseries_[end-1][1] = timeseries_[end-1][1] + tmp_hyd
+        tmp_elec = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (
+                    demand_pro + rand) * Electric_power * Electric_period * (once_elec + rand)
+        tmp_hyd = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (
+                    demand_pro + rand) * Hydrogen_power * Hydrogen_period * (once_hyd + rand)
+        timeseries_[begin - 1][0] = timeseries_[begin - 1][0] + tmp_elec  # 统计所有的车流量的电负荷
+        timeseries_[end - 1][0] = timeseries_[end - 1][0] + tmp_elec
+        timeseries_[begin - 1][1] = timeseries_[begin - 1][1] + tmp_hyd  # 统计车流量的氢负荷
+        timeseries_[end - 1][1] = timeseries_[end - 1][1] + tmp_hyd
 
-    print(timeseries_) # 返回路口节点的车流量和路口的路径长度？
+    print(timeseries_)  # 返回路口节点的车流量和路口的路径长度？
     return timeseries_
 
-def get_graph_Dalian_xml_day(data_xml='TrafficSim/out_day.xml', net_xml='TrafficSim/network.net.xml', time=False):
-    tree = ET.parse(data_xml) # 打开交通流的检测其xml
-    net = ET.parse(net_xml) # 打开network的xml文件
+
+# 处理所有的xml的交通流数据
+def get_graph_Dalian_xml_days(data_xml='TrafficSim/out_day.xml', net_xml='TrafficSim/network.net.xml', time=False):
+    tree = ET.parse(data_xml)  # 打开交通流的检测其xml
+    net = ET.parse(net_xml)  # 打开network的xml文件
     root = tree.getroot()
     net_root = net.getroot()
-    timeseries_ = np.zeros([150, 96, 2]) #【节点， 车流量，电氢负荷】
+    with open('train_data/GCN_Dalian_Graph.pkl', 'rb') as f:
+        G = pickle.load(f)
+    adj = nx.adjacency_matrix(G)  # 返回图的邻接矩阵
     max_length = 0
     edges = {}
     for edge in net_root.findall('.//edge'):
         edges[edge.get('id')] = float(edge.find('lane').get('length'))
         max_length = max(max_length, float(edge.find('lane').get('length')))
     detectors = root.findall('./interval')
-    print(len(detectors))
-
+    nodes = net.findall('./junction')
+    last_dectector_time = detectors[-1].get('end')
     time_step = 900.00
+    all_time_tags = int(float(last_dectector_time) / time_step)
+    print(all_time_tags)
+    timeseries_ = np.zeros([len(nodes), all_time_tags, 2])  # 【节点， 车流量的所有时间戳，电氢负荷】
+    start_time = 0.00
+    time_list = []
     for id, value in enumerate(detectors):
-        print(id, value)
         dector_id = value.get('id')
-        print(dector_id)
-        print(type(dector_id))
         begin = int(dector_id.split('_')[1].split('to')[0])
         end = int(dector_id.split('_')[1].split('to')[-1])
         edge_id = dector_id.split('_')[1]
         pro = edges[edge_id] / max_length
         rand = generate_random_number(pro)
         begin_time = float(value.get('begin'))
-        index = floor(begin_time/time_step)
+        index = floor(begin_time / time_step)
         vec_num = int(value.get('nVehContrib'))
-        tmp_elec =  vec_num * (
-                    demand_pro + rand) * Electric_power * Electric_period * (once_elec + rand)
+        tmp_elec = vec_num * (
+                demand_pro + rand) * Electric_power * Electric_period * (once_elec + rand)
         tmp_hyd = vec_num * (
-                    demand_pro + rand) * Hydrogen_power * Hydrogen_period * (once_hyd + rand)
-        timeseries_[begin-1][index][0] = timeseries_[begin-1][index][0] + tmp_elec  # 统计所有的车流量的电负荷
-        timeseries_[end-1][index][0] = timeseries_[end-1][index][0] + tmp_elec
-        timeseries_[begin-1][index][1] = timeseries_[begin-1][index][0] + tmp_hyd # 统计车流量的氢负荷
-        timeseries_[end-1][index][1] = timeseries_[end-1][index][1] + tmp_hyd
+                demand_pro + rand) * Hydrogen_power * Hydrogen_period * (once_hyd + rand)
+        timeseries_[begin - 1][index][0] = timeseries_[begin - 1][index][0] + tmp_elec  # 统计所有的车流量的电负荷
+        timeseries_[end - 1][index][0] = timeseries_[end - 1][index][0] + tmp_elec
+        timeseries_[begin - 1][index][1] = timeseries_[begin - 1][index][0] + tmp_hyd  # 统计车流量的氢负荷
+        timeseries_[end - 1][index][1] = timeseries_[end - 1][index][1] + tmp_hyd
+        if len(time_list)==0 or index*time_step>time_list[-1]:
+            time_list.append(index*time_step)
+    print(timeseries_.shape)
 
-    print(timeseries_) # 返回路口节点的车流量和路口的路径长度？
-    return timeseries_
-
+    if time:
+        return normalize_adj(adj).todense(), timeseries_, np.array(time_list)
+    return normalize_adj(adj).todense(), timeseries_
 
 
 def test_loadG(G_path='train_data/GCN_Dalian_Graph.pkl'):
@@ -348,4 +362,4 @@ if __name__ == '__main__':
     # data, data_map = get_dataset('Dalian')
     # get_graph_Dalian(data, data_map)
     # get_graph_Dalian_xml("network.net.xml", "vehicle_routes.rou.xml")
-    get_graph_Dalian_xml_day()
+    get_graph_Dalian_xml_days()

@@ -6,6 +6,7 @@ from sklearn.preprocessing import MinMaxScaler
 # from joblib import dump
 from data_handler import get_dataset
 import re
+import math
 
 
 def split_batch(X_list, y_list, batch_size):  # 对数据进行分batch操作
@@ -193,11 +194,11 @@ def process_time(time_list, train_length, forcast_window,
         return all_time_lags
     # np.save('train_data_matrix/time_matrix_lags.npy', all_time_lags)
     # np.save('train_data_matrix/time_long_matrix_lags.npy', all_time_lags)
-    i_train = all_time_lags.shape[0] - forcast_window  # 3400 # 2020-11-17 2019-9-6----2020-9-6 366+24+30+17=437
-    i_test = all_time_lags.shape[0]
+    i_train = math.floor(all_time_lags.shape[0]*0.8)  # 3400 # 2020-11-17 2019-9-6----2020-9-6 366+24+30+17=437
+    i_test = all_time_lags.shape[0] - i_train
 
     X_train_time = all_time_lags[:i_train, :]  # [3400, 37]
-    X_test_time = all_time_lags[i_train:i_test, :]  # [7, 37]
+    X_test_time = all_time_lags[i_train:, :]  # [7, 37]
     return X_train_time, X_test_time
 
 
