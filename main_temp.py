@@ -10,7 +10,8 @@ import os
 from collections import deque
 import datetime, time
 import matplotlib.pyplot as plt
-from models.utils import Rp_num_den, plot_Dalian_gcn_models
+from models.utils import Rp_num_den, plot_Dalian_gcn_models, mape, rmse_diff
+from tqdm import tqdm
 
 criterion = torch.nn.MSELoss()
 lr = 0.00001
@@ -65,6 +66,7 @@ def train_gcn_epoch(model, train_dl, optimizer):
 
 
 def test_GCN_Transform(model, test_dl, forcast_window=7):
+    # Return Rp, RMSE　MAPE
     with torch.no_grad():
         predictions = []
         observations = []
@@ -92,6 +94,11 @@ def test_GCN_Transform(model, test_dl, forcast_window=7):
         den = 0
         num2 = 0
         den2 = 0
+        num_n = 0
+        diff = 0
+        mape_add = 0
+        diff2 = 0
+        mape_add2 = 0
         for y_preds, y_trues in zip(predictions, observations):
             if len(y_preds.shape) < 3:
                 y_preds = y_preds[:, np.newaxis, :]
@@ -100,11 +107,24 @@ def test_GCN_Transform(model, test_dl, forcast_window=7):
             num_i_2, den_i_2 = Rp_num_den(y_preds[:, :, 1], y_trues[:, :, 1], .5)
             num += num_i_1
             den += den_i_1
-            num2 = num_i_2
-            den2 = den_i_2
+            num2 += num_i_2
+            den2 += den_i_2
+            diff_i, n_i = rmse_diff(y_preds[:,:,0], y_trues[:,:,0])
+            diff += diff_i
+            mape_i, _ = mape(y_preds[:,:,0], y_trues[:,:,0])
+            mape_add += mape_i
+            num_n += n_i
+            diff_i2, _ = rmse_diff(y_preds[:, :, 1], y_trues[:, :, 1])
+            diff2 += diff_i2
+            mape_i2, _ = mape(y_preds[:, :, 1], y_trues[:, :, 1])
+            mape_add2 += mape_i2
         Rp1 = (2 * num) / den
         Rp2 = (2 * num2) / den2
-    return (Rp1 + Rp2) / 2
+        RMSE1 = np.sqrt(diff / num_n)
+        MAPE1 = mape_add / num_n
+        RMSE2 = np.sqrt(diff2 / num_n)
+        MAPE2 = mape_add2 / num_n
+    return Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2
 
 
 def process_dalian_gcn_data(G_timeseries_map, time_list, training_length, forecast_window,
@@ -171,16 +191,15 @@ def Train_Dalian_Gcn_Transform(Rp_best, data_xml, net_xml, train_length, forecas
         l_t = train_gcn_epoch(model, train_dl, optimizer=optimizer)
         train_loss.append(l_t)
 
-        Rp = test_GCN_Transform(model, test_dl, forecast_window)
+        Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2 = test_GCN_Transform(model, test_dl, forecast_window)
 
-        if Rp_best > Rp:
-            Rp_best = Rp
-            save_model(model, e + 1, train_length, Rp)
+        if Rp_best > Rp1:
+            Rp_best = Rp1
+            save_model(model, e + 1, train_length, Rp1)
         train_epoch_loss.append(np.mean(train_loss))
         end = time.time()
-        print("Epoch {}: Train loss: {:.6f} \t R_p={:.3f}\tcost_time={:.4f}s".format(e + 1,
-                                                                                     np.mean(train_loss), Rp,
-                                                                                     end - start))
+        print("Epoch {}: Train loss: {:.6f} \t R_p1={:.3f}, RMSE1={:.3f}, MAPE1={:.3f}, R_p2={:.3f}, RMSE2={:.3f}, MAPE2={:.3f} \tcost_time={:.4f}s".format(e + 1,
+                np.mean(train_loss), Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2, end - start))
     print('结束训练时间:', datetime.datetime.now())
     torch.save(model, 'train_process/model_last_length{}.pkl'.format(train_length))
     save_loss(args)
@@ -219,7 +238,7 @@ def Test_Dalian_Gcn_Transform(data_xml, net_xml, train_length, forecast_window, 
 
 
 if __name__ == "__main__":
-    data_xml = "TrafficSim/out_day.xml"
+    data_xml = "TrafficSim/out_7days.xml"
     net_xml = "TrafficSim/network.net.xml"
     train_length = 30
     forecast_window = 7

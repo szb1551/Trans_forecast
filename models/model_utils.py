@@ -130,9 +130,9 @@ def get_Transformer_gcn_args(train_length, forcast_window, X_train, adj_matrix):
 
 def get_Transformer_Dalian_gcn_args(train_length, forcast_window, X_train, adj_matrix):
     args = {"train_length": train_length, "forcast_window": forcast_window, 'enc_filters': 64,
-            "input_shape": X_train.shape, 'lr': 1e-4, 'epochs': 10000, 'conv_feature': 1,
+            "input_shape": X_train.shape, 'lr': 1e-4, 'epochs': 1000, 'conv_feature': 1,
             'n_head': 8, 'num_layers': 4, 'dropout': 0.1, 'dec_filters': 32,
-            'adj_matrix': adj_matrix, 'embedding_size': 200, 'embedding_feature': 128,
+            'adj_matrix': adj_matrix, 'embedding_size': 1000, 'embedding_feature': 512,
             'name': 'gcn', 'weight_decay': 1e-9, 'other': 1, 'Hydrogen': 1}
     return args
 

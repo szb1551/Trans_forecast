@@ -9,10 +9,30 @@ def Dp(y_pred, y_true, q):  # softmax更新
     return max([q * (y_pred - y_true), (1 - q) * (y_true - y_pred)])
 
 
+def diff_squre(y_pred, y_true):
+    return (y_pred - y_true) ** 2
+
+
+def mape_ins(y_pred, y_true):
+    return abs((y_pred - y_true) / y_true)
+
+
 def Rp_num_den(y_preds, y_trues, q):  # RP_loss
     numerator = np.sum([Dp(y_pred, y_true, q) for y_pred, y_true in zip(y_preds, y_trues)])
     denominator = np.sum([np.abs(y_true) for y_true in y_trues])
     return numerator, denominator
+
+
+def rmse_diff(predictions, targets):
+    differences_squared = np.sum(diff_squre(y_pred, y_true) for y_pred, y_true in zip(predictions, targets))
+    num = len(predictions)
+    return differences_squared, num
+
+
+def mape(predictions, targets):
+    mape_sum = np.sum(mape_ins(y_pred, y_true) for y_pred, y_true in zip(predictions, targets))
+    num = len(predictions)
+    return mape_sum, num
 
 
 def change_to_date(date_num):  # 更改数字日期到真实日期
