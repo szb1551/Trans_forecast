@@ -157,7 +157,7 @@ def setup_GCN(data, forecast_horizon, num_lags, time=False):  # 得到图，邻�
 
 # 得到Dalian数据结构的GCN图拓扑结构
 def get_graph_Dalian(data, data_map, time=False, figure=True):
-    G = nx.Graph()
+    G = nx.DiGraph()
     temp = 0
     for station in data['路口名称'].unique():
         G.add_node(station)
@@ -175,6 +175,7 @@ def get_graph_Dalian(data, data_map, time=False, figure=True):
             if data_map[G.nodes[node_x]['ID'], G.nodes[node_y]['ID']] == 0:
                 continue
             G.add_edge(node_x, node_y)
+            # G[node_x][node_y]['weight'] = dist
             G[node_x][node_y]['weight'] = np.exp(-dist)
 
     adj = nx.adjacency_matrix(G)  # 返回图的邻接矩阵
@@ -354,12 +355,15 @@ def get_graph_Dalian_xml_days(data_xml='TrafficSim/out_day.xml', net_xml='Traffi
 def test_loadG(G_path='train_data/GCN_Dalian_Graph.pkl'):
     with open(G_path, 'rb') as f:
         G = pickle.load(f)
-    print(G.edges(data=True))
-
+    # print(G.edges(data=True))
+    edges_with_things = G.edges(data=True)
+    for nodex, nodey, weight in edges_with_things:
+        print(nodex, nodey, weight['weight'])
 
 if __name__ == '__main__':
     # setup_GCN(data, forecast_horizon=7, num_lags=30)
-    # data, data_map = get_dataset('Dalian')
-    # get_graph_Dalian(data, data_map)
+    data, data_map = get_dataset('Dalian')
+    get_graph_Dalian(data, data_map)
+    # test_loadG()
     # get_graph_Dalian_xml("network.net.xml", "vehicle_routes.rou.xml")
-    get_graph_Dalian_xml_days()
+    # get_graph_Dalian_xml_days()

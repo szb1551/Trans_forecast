@@ -26,7 +26,7 @@ for edge in root.findall('edge'):
             'id': detector_id,
             'lane': lane_id,
             'pos': '42',  # 检测器的位置，这里是硬编码示例
-            'freq': '900',  # 检测周期
+            'freq': '3600',  # 检测周期
             'file': 'out.xml'  # 输出文件名
         })
 

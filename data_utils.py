@@ -4,7 +4,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import os
-
+import pickle
+import networkx as nx
+from tqdm import tqdm
 
 """
     将数据处理为5*5的格子，得到栅格地图
@@ -73,3 +75,66 @@ def get_raster_map(data, normalized=False, verbose=False, nx=5, ny=5):  # 得到
         # print(raster_map)
     # print(raster_map.shape)  # [3444, 5, 5]
     return raster_map, np.array(time_list)
+
+
+def change_to_csv(data, name='predict'):
+    import pandas as pd
+    import numpy as np
+
+    # 将numpy数组转换为pandas的DataFrame
+    df = pd.DataFrame(data)
+
+    # 将DataFrame保存为CSV文件
+    df.to_csv('{}_data.csv'.format(name), index=False)  # 设置index=False来避免在csv文件中添加索引列
+
+
+def generate_demand_related_random_number(distance):
+    # 设定基础概率，确保所有情况下随机数都在[-0.2, 0.2]范围内
+    base = np.random.uniform(-0.1, 0.2)
+
+    # 根据距离调整倾斜程度，这里的调整系数可以根据实际需求调整
+    # 距离越大，bias_factor 越小，随机数越倾向于取0.2的值
+    bias_factor = 1 - np.tanh(distance)  # 这里使用tanh函数作为一个例子
+
+    # 调整基础随机数，使其更倾向于0.2
+    biased_random = base * bias_factor + 0.2 * (1 - bias_factor)
+
+    return biased_random
+
+def flow_to_ele_hyd(flow_path="predict_data.csv"):
+    data = pd.read_csv(flow_path)
+    flow_thing = data.to_numpy()
+    # 交通流转电氢负荷相应超参数
+    Ele_hyd = 2
+    Electric_period = 0.4
+    Hydrogen_period = 0.1
+    Electric_power = 94.3  # （kwh）
+    Hydrogen_power = 122.7  # （L）
+    demand_pro = 0.2  # 充电需求概率
+    once_elec = 0.7  # 一次充的电量
+    once_hyd = 0.9  # 一次加氢的比例，氢和油的时间差不多
+
+    with open('train_data/GCN_Dalian_Graph.pkl', 'rb') as f:
+        G = pickle.load(f)
+    adj = nx.adjacency_matrix(G).todense()  # 返回图的邻接矩阵
+
+    elec_nodes = np.zeros([flow_thing.shape[0], flow_thing.shape[1]]) #[time, nodes]
+    hyd_nodes = np.zeros([flow_thing.shape[0], flow_thing.shape[1]])
+    for i in tqdm(range(flow_thing.shape[1])):
+
+        demand_elec_node = np.zeros(flow_thing.shape[0])
+        demand_hyd_node = np.zeros(flow_thing.shape[0])
+        for j in range(flow_thing.shape[0]):
+            rand = generate_demand_related_random_number(adj[i].sum(axis=-1))
+            tmp_elec = (demand_pro + rand)* Electric_power* Electric_period * (once_elec + rand)
+            tmp_hyd = (demand_pro + rand)* Hydrogen_power* Hydrogen_period * (once_hyd + rand)
+            demand_elec_node[j] = tmp_elec
+            demand_hyd_node[j] = tmp_hyd
+
+        elec_nodes[:, i] = flow_thing[:, i] * demand_elec_node
+        hyd_nodes[:,i] = flow_thing[:,i] * demand_hyd_node
+    change_to_csv(elec_nodes, name='elec')
+    change_to_csv(hyd_nodes, name='hyd')
+
+if __name__ == "__main__":
+    flow_to_ele_hyd()

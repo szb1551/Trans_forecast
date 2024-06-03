@@ -19,3 +19,7 @@ __pycache__
 *.xml
 sumo_flow.py
 TrafficSim/
+*.m
+*.csv
+generate_flow_bw*.py
+.gitignore
