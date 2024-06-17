@@ -72,6 +72,7 @@ def map_to_probability_nonlinear(value, min_value, max_value):
         # 使用指数函数进行非线性映射，并缩放到[0.3, 1]的范围内
         return 0.2 + (math.pow(a, normalized_value) - 1) / (a - 1) * 0.8
 
+
 def generate_probability_leave():
     hours = np.arange(24)
 
@@ -84,8 +85,8 @@ def generate_probability_leave():
     std_dev = 1.0
 
     # 使用高斯分布增加早晚高峰时段的概率
-    morning_peak = np.exp(-0.5 * ((hours - morning_peak_hour) / std_dev) ** 2) * 0.5
-    evening_peak = np.exp(-0.5 * ((hours - evening_peak_hour) / std_dev) ** 2) * 0.5
+    morning_peak = np.exp(-0.5 * ((hours - morning_peak_hour) / std_dev) ** 2) * 0.4
+    evening_peak = np.exp(-0.5 * ((hours - evening_peak_hour) / std_dev) ** 2) * 0.4
 
     # 将高峰概率叠加到基础概率上
     probabilities += morning_peak
@@ -93,11 +94,12 @@ def generate_probability_leave():
 
     return probabilities
 
+
 def generate_probability_high():
     hours = np.arange(24)
 
     # 初始化概率数组，所有时段起始都有一个基础概率
-    probabilities = np.ones(24) * 0.2
+    probabilities = np.ones(24) * 0.4
 
     # 定义早晚高峰的中心时间和高斯分布的标准差
     morning_peak_hour = 9
@@ -105,14 +107,15 @@ def generate_probability_high():
     std_dev = 1.0
 
     # 使用高斯分布增加早晚高峰时段的概率
-    morning_peak = np.exp(-0.5 * ((hours - morning_peak_hour) / std_dev) ** 2) * 0.5
-    evening_peak = np.exp(-0.5 * ((hours - evening_peak_hour) / std_dev) ** 2) * 0.5
+    morning_peak = np.exp(-0.5 * ((hours - morning_peak_hour) / std_dev) ** 2) * 0.4
+    evening_peak = np.exp(-0.5 * ((hours - evening_peak_hour) / std_dev) ** 2) * 0.4
 
     # 将高峰概率叠加到基础概率上
     probabilities += morning_peak
     probabilities += evening_peak
 
     return probabilities
+
 
 def init_tarffic():
     # with open('./GCN_Dalian_Graph.pkl', 'rb') as f:
@@ -136,7 +139,8 @@ def init_tarffic():
 
 
 # 路口车流量的迭代转移
-def transfer_traffic(adjacency_matrix, current_traffic_flow, node_prob_matrix, output_nodes, input_nodes, min_vehicle=50, max_vehicle=80):
+def transfer_traffic(adjacency_matrix, current_traffic_flow, node_prob_matrix, output_nodes, input_nodes,
+                     min_vehicle=50, max_vehicle=80):
     # 计算每个路口的出流量
     transition_prob_matrix = generate_transition_probabilities(adjacency_matrix, output_nodes)
 
@@ -218,8 +222,8 @@ def run():
     day_probabilities = generate_probability_high()
     day_leave = generate_probability_leave()
     node_pros = np.array([day_leave for _ in range(num_intersections)]).T
-    vehicle_hours_min = np.round(min_vehicle + (min_vehicle*2-min_vehicle)*day_probabilities)
-    vehicle_hours_max = np.round(max_vehicle + (max_vehicle*2-max_vehicle)*day_probabilities)
+    vehicle_hours_min = np.round(min_vehicle + (min_vehicle * 2 - min_vehicle) * day_probabilities)
+    vehicle_hours_max = np.round(max_vehicle + (max_vehicle * 2 - max_vehicle) * day_probabilities)
     # for i in range(24):
     #     node_temp = np.zeros(num_intersections)
     #     for j in range(len(node_pros)):
@@ -230,9 +234,10 @@ def run():
 
     # 开始迭代过程，从第1次迭代开始直到第96次
     for iteration in tqdm(range(1, num_iterations)):
-        index = math.floor(iteration/4%24)
+        index = math.floor(iteration / 4 % 24)
         traffic_flows[iteration] = transfer_traffic(adjacency_matrix, traffic_flows[iteration - 1], node_pros[index],
-                                                    output_nodes, input_nodes, vehicle_hours_min[index], vehicle_hours_max[index])
+                                                    output_nodes, input_nodes, vehicle_hours_min[index],
+                                                    vehicle_hours_max[index])
 
     # 输出所有迭代后的每个路口的车流量
     print("所有迭代后的每个路口车流量:")
@@ -245,7 +250,7 @@ def run():
     plot_nodes(time_slots_hour, traffic_flows, [12, 149])
     plot_nodes(time_slots_hour, traffic_flows, [0, 13])
     plot_nodes(time_slots_hour, traffic_flows, [9, 30])
-    plot_nodes(time_slots_hour, traffic_flows, [9, 41])
+    plot_nodes(time_slots_hour, traffic_flows, [25, 41])
 
 
 if __name__ == '__main__':

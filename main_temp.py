@@ -11,6 +11,9 @@ from collections import deque
 import datetime, time
 import matplotlib.pyplot as plt
 from models.utils import Rp_num_den, plot_Dalian_gcn_models, mape, rmse_diff
+import pickle
+import networkx as nx
+from data_utils import read_csv2numpy, get_time_list
 from tqdm import tqdm
 
 criterion = torch.nn.MSELoss()
@@ -109,9 +112,9 @@ def test_GCN_Transform(model, test_dl, forcast_window=7):
             den += den_i_1
             num2 += num_i_2
             den2 += den_i_2
-            diff_i, n_i = rmse_diff(y_preds[:,:,0], y_trues[:,:,0])
+            diff_i, n_i = rmse_diff(y_preds[:, :, 0], y_trues[:, :, 0])
             diff += diff_i
-            mape_i, _ = mape(y_preds[:,:,0], y_trues[:,:,0])
+            mape_i, _ = mape(y_preds[:, :, 0], y_trues[:, :, 0])
             mape_add += mape_i
             num_n += n_i
             diff_i2, _ = rmse_diff(y_preds[:, :, 1], y_trues[:, :, 1])
@@ -124,7 +127,7 @@ def test_GCN_Transform(model, test_dl, forcast_window=7):
         MAPE1 = mape_add / num_n
         RMSE2 = np.sqrt(diff2 / num_n)
         MAPE2 = mape_add2 / num_n
-    return Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2
+    return Rp1, RMSE1[0], MAPE1[0], Rp2, RMSE2[0], MAPE2[0]
 
 
 def process_dalian_gcn_data(G_timeseries_map, time_list, training_length, forecast_window,
@@ -198,7 +201,9 @@ def Train_Dalian_Gcn_Transform(Rp_best, data_xml, net_xml, train_length, forecas
             save_model(model, e + 1, train_length, Rp1)
         train_epoch_loss.append(np.mean(train_loss))
         end = time.time()
-        print("Epoch {}: Train loss: {:.6f} \t R_p1={:.3f}, RMSE1={:.3f}, MAPE1={:.3f}, R_p2={:.3f}, RMSE2={:.3f}, MAPE2={:.3f} \tcost_time={:.4f}s".format(e + 1,
+        print(
+            "Epoch {}: Train loss: {:.6f} \t R_p1={:.3f}, RMSE1={:.3f}, MAPE1={:.3f}, R_p2={:.3f}, RMSE2={:.3f}, MAPE2={:.3f} \tcost_time={:.4f}s".format(
+                e + 1,
                 np.mean(train_loss), Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2, end - start))
     print('结束训练时间:', datetime.datetime.now())
     torch.save(model, 'train_process/model_last_length{}.pkl'.format(train_length))
@@ -234,13 +239,80 @@ def Test_Dalian_Gcn_Transform(data_xml, net_xml, train_length, forecast_window, 
     model = torch.load("train_process/model_last_length30.pkl")
 
     plot_Dalian_gcn_models(model, train_dl, train_length, forecast_window, max_=max_)
-    plot_Dalian_gcn_models(model, test_dl, train_length, forecast_window, test=True,max_=max_)
+    plot_Dalian_gcn_models(model, test_dl, train_length, forecast_window, test=True, max_=max_)
+
+
+# 读取电氢负荷数据，并进行训练预测
+def Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window,
+                                    normalize=True):
+    G_timeseries_map = read_csv2numpy(elec_path, hyd_path)
+    time_list = get_time_list(elec_path)
+    with open(graph_path, 'rb') as f:
+        G = pickle.load(f)
+    A = nx.adjacency_matrix(G).todense()  # 返回图的邻接矩阵
+    A = torch.tensor(A, dtype=torch.float32).to(device)
+    if normalize:
+        max_ = np.amax(G_timeseries_map, axis=(0, 1))
+        G_timeseries_map = G_timeseries_map / max_
+        G_timeseries_map[G_timeseries_map == 0] = np.random.normal(
+            np.zeros_like(G_timeseries_map[G_timeseries_map == 0]),
+            0.001)
+    train_dataset, test_dataset, X_train_time, X_test_time = \
+        process_dalian_gcn_data(G_timeseries_map, time_list, training_length=train_length,
+                                forecast_window=forecast_window,
+                                time=True)
+
+    train_data = SensorDataset_GCN(train_dataset, X_train_time, train_length, forecast_window)
+    test_data = SensorDataset_GCN(test_dataset, X_test_time, train_length, forecast_window)
+    train_dl = DataLoader(train_data, batch_size=32, shuffle=True)  # [batch_size, Nodes, Times]
+    test_dl = DataLoader(test_data, batch_size=1)
+    args = get_model_args(name='Transformer_gcn_Dalian', train_length=train_length, forcast_window=forecast_window,
+                          X_train=train_dataset, adj_matrix=A)
+    model = select_model('Transformer_gcn_Dalian', args=args).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'])
+    files = os.listdir("train_process/")
+    if len(files):  # 初始化文件夹里面的文件命
+        for file in files:
+            if file.split('.')[-1] == 'pkl' and file.split('_')[1] != 'last':
+                filenames.append("train_process/" + file.replace('.pkl', ''))
+    print('开始训练时间:', datetime.datetime.now())
+    for e, epoch in enumerate(range(args['epochs'])):
+        start = time.time()
+        train_loss = []
+
+        l_t = train_gcn_epoch(model, train_dl, optimizer=optimizer)
+        train_loss.append(l_t)
+
+        Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2 = test_GCN_Transform(model, test_dl, forecast_window)
+
+        if Rp_best > Rp1:
+            Rp_best = Rp1
+            save_model(model, e + 1, train_length, Rp1)
+        train_epoch_loss.append(np.mean(train_loss))
+        end = time.time()
+        print(
+            "Epoch {}: Train loss: {:.6f} \t R_p1={:.3f}, RMSE1={:.3f}, MAPE1={:.3f}, R_p2={:.3f}, RMSE2={:.3f}, MAPE2={:.3f} \tcost_time={:.4f}s".format(
+                e + 1,
+                np.mean(train_loss), Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2, end - start))
+    print('结束训练时间:', datetime.datetime.now())
+    torch.save(model, 'train_process/model_last_length{}.pkl'.format(train_length))
+    save_loss(args)
+    plot_Dalian_gcn_models(model, train_dl, train_length, forecast_window)
+    plot_Dalian_gcn_models(model, test_dl, train_length, forecast_window, test=True)
+
+    # attn_layers = get_gcn_attn(model, test_dl.dataset[idx_example][0].unsqueeze(0),
+    #                            test_dl.dataset[idx_example][1].unsqueeze(0),
+    #                            test_dl.dataset[idx_example][2].unsqueeze(0))
+    # show_gcn_attn(test_data, attn_layers)
 
 
 if __name__ == "__main__":
-    data_xml = "TrafficSim/out_7days.xml"
-    net_xml = "TrafficSim/network.net.xml"
+    # data_xml = "TrafficSim/out_7days.xml"
+    # net_xml = "TrafficSim/network.net.xml"
+    elec_path = "data/数据源/elec_data.csv"
+    hyd_path = "data/数据源/hyd_data.csv"
+    graph_path = "train_data/GCN_Dalian_Graph.pkl"
     train_length = 30
     forecast_window = 7
-    Train_Dalian_Gcn_Transform(Rp_best, data_xml, net_xml, train_length, forecast_window)
+    Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window)
     # Test_Dalian_Gcn_Transform(data_xml, net_xml, train_length, forecast_window*5)

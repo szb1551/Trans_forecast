@@ -144,6 +144,7 @@ class SensorDataset_baseline_conv(Dataset):  # 得baseline raster使用
         return sample
 
 
+# 不区分位置编码的时间信息
 class SensorDataset_GCN(Dataset):  # GCN使用
     def __init__(self, dataset, time_lists, train_length, forecast_window, baseline=False):
         # csv_file = os.path.join(root_dir, csv_name)  # 打开csv文件
@@ -152,10 +153,7 @@ class SensorDataset_GCN(Dataset):  # GCN使用
             self.tar = torch.tensor(dataset[:, :, train_length:], dtype=torch.float32)
         else:
             self.tar = torch.tensor(dataset[:, :, train_length - 1:], dtype=torch.float32)
-        # self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)]) # 只会被当作位置编码
-        self.x = torch.zeros((self.src.shape[0], train_length+forecast_window))
-        for i in range(self.src.shape[0]):
-            self.x[i] = torch.arange(i, i+train_length+forecast_window)
+        self.x = torch.cat(self.src.shape[0] * [torch.arange(0, train_length + forecast_window).unsqueeze(0)]) # 只会被当作位置编码
         # self.x = torch.tensor(self.x, dtype=torch.float32)
         self.time_list = time_lists
         print('src:', self.src.shape)  # [3400, N, 30, ...]
@@ -174,6 +172,35 @@ class SensorDataset_GCN(Dataset):  # GCN使用
                   self.time_list[idx, :])
         return sample
 
+
+# 区分位置编码的时间信息
+class SensorDataset_GCN_Time(Dataset):  # GCN使用
+    def __init__(self, dataset, time_lists, train_length, forecast_window, baseline=False):
+        # csv_file = os.path.join(root_dir, csv_name)  # 打开csv文件
+        self.src = torch.tensor(dataset[:, :, :train_length], dtype=torch.float32)
+        if baseline:
+            self.tar = torch.tensor(dataset[:, :, train_length:], dtype=torch.float32)
+        else:
+            self.tar = torch.tensor(dataset[:, :, train_length - 1:], dtype=torch.float32)
+        self.x = torch.zeros((self.src.shape[0], train_length+forecast_window))
+        for i in range(self.src.shape[0]):
+            self.x[i] = torch.arange(i, i+train_length+forecast_window)
+        self.time_list = time_lists
+        print('src:', self.src.shape)  # [3400, N, 30, ...]
+        print('tar:', self.tar.shape)  # [3400, N, 8, ...]
+        print('x:', self.x.shape)  # [3400, 37]
+        print('time_list:', self.time_list.shape)  # [3400, 37]
+
+    def __len__(self):
+        # print(len(self.df.groupby(by=["Start"]))) # 3400|37
+        return len(self.tar)
+
+    def __getitem__(self, idx):
+        sample = (self.x[idx, :],
+                  self.src[idx, :],
+                  self.tar[idx, :],
+                  self.time_list[idx, :])
+        return sample
 
 class SensorDataset_GCN_diff(Dataset):  # GCN使用
     def __init__(self, dataset, time_lists, train_length, forecast_window, baseline=False):

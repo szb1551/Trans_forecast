@@ -101,6 +101,8 @@ def generate_demand_related_random_number(distance):
 
     return biased_random
 
+
+# 交通流转电氢负荷
 def flow_to_ele_hyd(flow_path="predict_data.csv"):
     data = pd.read_csv(flow_path)
     flow_thing = data.to_numpy()
@@ -118,7 +120,7 @@ def flow_to_ele_hyd(flow_path="predict_data.csv"):
         G = pickle.load(f)
     adj = nx.adjacency_matrix(G).todense()  # 返回图的邻接矩阵
 
-    elec_nodes = np.zeros([flow_thing.shape[0], flow_thing.shape[1]]) #[time, nodes]
+    elec_nodes = np.zeros([flow_thing.shape[0], flow_thing.shape[1]])  # [time, nodes]
     hyd_nodes = np.zeros([flow_thing.shape[0], flow_thing.shape[1]])
     for i in tqdm(range(flow_thing.shape[1])):
 
@@ -126,15 +128,38 @@ def flow_to_ele_hyd(flow_path="predict_data.csv"):
         demand_hyd_node = np.zeros(flow_thing.shape[0])
         for j in range(flow_thing.shape[0]):
             rand = generate_demand_related_random_number(adj[i].sum(axis=-1))
-            tmp_elec = (demand_pro + rand)* Electric_power* Electric_period * (once_elec + rand)
-            tmp_hyd = (demand_pro + rand)* Hydrogen_power* Hydrogen_period * (once_hyd + rand)
+            tmp_elec = (demand_pro + rand) * Electric_power * Electric_period * (once_elec + rand)
+            tmp_hyd = (demand_pro + rand) * Hydrogen_power * Hydrogen_period * (once_hyd + rand)
             demand_elec_node[j] = tmp_elec
             demand_hyd_node[j] = tmp_hyd
 
         elec_nodes[:, i] = flow_thing[:, i] * demand_elec_node
-        hyd_nodes[:,i] = flow_thing[:,i] * demand_hyd_node
+        hyd_nodes[:, i] = flow_thing[:, i] * demand_hyd_node
     change_to_csv(elec_nodes, name='elec')
     change_to_csv(hyd_nodes, name='hyd')
 
+
+# 读取电氢csv数据，并转为numpy矩阵,数据类型为[T,Node,2]
+# 转为[Node, T, 2]
+# 先elec 再 hyd
+def read_csv2numpy(elec_path, hyd_path):
+    data = pd.read_csv(elec_path)
+    elec_demand = data.to_numpy()
+    data = pd.read_csv(hyd_path)
+    hyd_demand = data.to_numpy()
+    elec_with_hyd = np.dstack((elec_demand, hyd_demand))
+    print(elec_with_hyd.shape)
+    elec_with_hyd = np.transpose(elec_with_hyd, (1,0,2))
+    return elec_with_hyd
+
+# 获取时序信息表，采样时间为每15分钟。
+def get_time_list(elec_path):
+    data = pd.read_csv(elec_path)
+    elec_demand = data.to_numpy()
+    all_time = len(elec_demand)
+    time_list = np.arange(0, all_time)
+    return time_list
+
 if __name__ == "__main__":
-    flow_to_ele_hyd()
+    # flow_to_ele_hyd()
+    read_csv2numpy(elec_path="data/数据源/elec_data.csv", hyd_path="data/数据源/hyd_data.csv")

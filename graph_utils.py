@@ -224,7 +224,7 @@ def get_graph_Dalian_Deal(data, data_map, forecast_horizon, num_lags, time=False
     matrix_lags = np.zeros(
         (timeseries_.shape[1] - (NUM_LAGS + forecast_horizon), timeseries_.shape[0], NUM_LAGS + forecast_horizon,
          Ele_hyd))
-    STEPS_AHEAD = math.floor(matrix_lags.shape[0] * 0.2)
+    STEPS_AHEAD = floor(matrix_lags.shape[0] * 0.2)
     i_train = matrix_lags.shape[0] - STEPS_AHEAD
     i_test = matrix_lags.shape[0]
 
@@ -290,9 +290,9 @@ def get_graph_Dalian_xml(data_xml, sim_xml, time=False):
         pro = edges[id] / max_length
         rand = generate_random_number(pro)
         tmp_elec = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (
-                    demand_pro + rand) * Electric_power * Electric_period * (once_elec + rand)
+                demand_pro + rand) * Electric_power * Electric_period * (once_elec + rand)
         tmp_hyd = len(sim_root.findall("./vehicle[@route='{}']".format(value))) * (
-                    demand_pro + rand) * Hydrogen_power * Hydrogen_period * (once_hyd + rand)
+                demand_pro + rand) * Hydrogen_power * Hydrogen_period * (once_hyd + rand)
         timeseries_[begin - 1][0] = timeseries_[begin - 1][0] + tmp_elec  # 统计所有的车流量的电负荷
         timeseries_[end - 1][0] = timeseries_[end - 1][0] + tmp_elec
         timeseries_[begin - 1][1] = timeseries_[begin - 1][1] + tmp_hyd  # 统计车流量的氢负荷
@@ -343,8 +343,8 @@ def get_graph_Dalian_xml_days(data_xml='TrafficSim/out_day.xml', net_xml='Traffi
         timeseries_[end - 1][index][0] = timeseries_[end - 1][index][0] + tmp_elec
         timeseries_[begin - 1][index][1] = timeseries_[begin - 1][index][0] + tmp_hyd  # 统计车流量的氢负荷
         timeseries_[end - 1][index][1] = timeseries_[end - 1][index][1] + tmp_hyd
-        if len(time_list)==0 or index*time_step>time_list[-1]:
-            time_list.append(index*time_step)
+        if len(time_list) == 0 or index * time_step > time_list[-1]:
+            time_list.append(index * time_step)
     print(timeseries_.shape)
 
     if time:
@@ -359,6 +359,7 @@ def test_loadG(G_path='train_data/GCN_Dalian_Graph.pkl'):
     edges_with_things = G.edges(data=True)
     for nodex, nodey, weight in edges_with_things:
         print(nodex, nodey, weight['weight'])
+
 
 if __name__ == '__main__':
     # setup_GCN(data, forecast_horizon=7, num_lags=30)
