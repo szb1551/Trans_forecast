@@ -42,7 +42,7 @@ def mape(predictions, targets):
 
 
 class Train_all_models:
-    def __init__(self, name, dataset, time_list, train_length, forcast_window, max_=None, random=False, Rp_best=10, A=None):
+    def __init__(self, name, dataset, time_list, train_length, forcast_window, max_=None, random=False, Rp_best=10, A=None, load=False):
         self.name = name
         self.dataset = dataset
         self.Rp_best = Rp_best
@@ -56,7 +56,8 @@ class Train_all_models:
         self.max_ = max_
         self.A = A
         self.random = random
-
+        self.load = load
+        self.model_save_back = '.pkl'
     def save_dataset(self, train_dataset, test_dataset, save):
         if save:
             np.save('split_data/{}_long_train_dataset.npy'.format(self.name), train_dataset, allow_pickle=True)
@@ -100,8 +101,8 @@ class Train_all_models:
         files = os.listdir(dir_name)
         if len(files):  # 初始化文件夹里面的文件命
             for file in files:
-                if file.split('.')[-1] == 'h5' and file.split('_')[1] != 'last':
-                    self.filenames.append(dir_name + file.replace('.h5', ''))
+                if file.split('.')[-1] == self.model_save_back and file.split('_')[1] != 'last':
+                    self.filenames.append(dir_name + file.replace(self.model_save_back, ''))
 
     def train_gcn_epoch(self, model, train_dl, optimizer, device, baseline=False):
         model.train()
@@ -503,11 +504,11 @@ class Train_all_models:
 
     def save_model(self, model, e, train_length, Rp, model_name="GCN"):
         save_name = 'train_process/model{}_epoch{}_length{}_Rp_{:.4f}'.format(model_name, e, train_length, Rp)
-        torch.save(model, save_name + '.h5')
-        torch.save(model.state_dict(), save_name + '.pkl')
+        torch.save(model, save_name + self.model_save_back)
+        # torch.save(model.state_dict(), save_name + 'param.pkl')
         if len(self.filenames) >= self.model_num:
-            os.remove(self.filenames[0] + '.h5')
-            os.remove(self.filenames[0] + '.pkl')
+            os.remove(self.filenames[0] + self.model_save_back)
+            # os.remove(self.filenames[0] + '.pkl')
         self.filenames.append(save_name)
 
     def save_loss(self, args):
@@ -721,11 +722,16 @@ class Train_all_models:
     def train_gcn(self, device):
         train_dl, test_dl = self.get_dl(SensorDataset_GCN, random=self.random)
         args = self.get_args()
-        model = select_model(self.name, args).to(device)
+        if self.load:
+            print("模型加载成功")
+            model = torch.load('train_process/model_last_length{}'.format(self.train_length) + self.model_save_back).to(device)
+            # model = torch.load('train_process/modelgcn_epoch36_length30_Rp_0.0357' + self.model_save_back).to(device)
+        else:
+            model = select_model(self.name, args).to(device)
         self.initial_files()
         self.train_step(model, args, train_dl, test_dl, device)
-        torch.save(model, 'train_process/model_last_length{}.h5'.format(self.train_length))
-        torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
+        torch.save(model, 'train_process/model_last_length{}'.format(self.train_length) + self.model_save_back)
+        # torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
         self.save_loss(args)
         self.plot_model(model, train_dl, args)
         self.plot_model(model, test_dl, args, test=True)
@@ -750,8 +756,8 @@ class Train_all_models:
         model = select_model(self.name, args).to(device)
         self.initial_files()
         self.train_step(model, args, train_dl, test_dl, device)
-        torch.save(model, 'train_process/model_last_length{}.h5'.format(self.train_length))
-        torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
+        torch.save(model, 'train_process/model_last_length{}'.format(self.train_length) + self.model_save_back)
+        # torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
         self.save_loss(args)
         self.plot_model(model, train_dl, args)
         self.plot_model(model, test_dl, args, test=True)
@@ -763,8 +769,8 @@ class Train_all_models:
         model = select_model(self.name, args).to(device)
         self.initial_files()
         self.train_step(model, args, train_dl, test_dl, device)
-        torch.save(model, 'train_process/model_last_length{}.h5'.format(self.train_length))
-        torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
+        torch.save(model, 'train_process/model_last_length{}'.format(self.train_length)+ self.model_save_back)
+        # torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
         self.save_loss(args)
         self.plot_model(model, train_dl, args)
         self.plot_model(model, test_dl, args, test=True)
@@ -776,8 +782,8 @@ class Train_all_models:
         model = select_model(self.name, args).to(device)
         self.initial_files()
         self.train_step(model, args, train_dl, test_dl, device, baseline=baseline)
-        torch.save(model, 'train_process/model_last_length{}.h5'.format(self.train_length))
-        torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
+        torch.save(model, 'train_process/model_last_length{}'.format(self.train_length)+ self.model_save_back)
+        # torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
         self.save_loss(args)
         self.plot_model(model, train_dl, args)
         self.plot_model(model, test_dl, args, test=True)
@@ -788,8 +794,8 @@ class Train_all_models:
         model = select_model(self.name, args).to(device)
         self.initial_files()
         self.train_step(model, args, train_dl, test_dl, device, baseline=baseline)
-        torch.save(model, 'train_process/model_last_length{}.h5'.format(self.train_length))
-        torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
+        torch.save(model, 'train_process/model_last_length{}'.format(self.train_length) + self.model_save_back)
+        # torch.save(model.state_dict(), 'train_process/model_last_length{}.pkl'.format(self.train_length))
         self.save_loss(args)
         self.plot_model(model, train_dl, args)
         self.plot_model(model, test_dl, args, test=True)

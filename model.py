@@ -505,7 +505,7 @@ class Transformer_Dalian(torch.nn.Module):
         # B, N, T, F
         # self.input_embedding = TimeDistributed(nn.Conv2d(1, 16, 3, padding=1))
         # self.flatten = TimeDistributed_FL(nn.Flatten())
-        self.gcn_enc = gcn.GCN_FIGURE(args['adj_matrix'], [args['enc_filters'], args['train_length']],
+        self.gcn_enc = gcn.GCN_FIGURE(args['adj_matrix'], [args['enc_filters'], args['enc_last']],
                                       [args['conv_feature'] + args['Hydrogen'],
                                        (args['conv_feature'] + args['Hydrogen']) * args['enc_filters']],
                                       [nn.ReLU(), nn.ReLU()], variates=1 + args['Hydrogen'])
@@ -521,7 +521,7 @@ class Transformer_Dalian(torch.nn.Module):
                                                               dropout=args['dropout'])
         self.transformer_decoder = torch.nn.TransformerDecoder(self.decoder_layer, num_layers=args['num_layers'])
         self.fc_enc_gcn = torch.nn.Linear(
-            (args['conv_feature'] + args['Hydrogen']) * args['adj_matrix'].shape[0] * args['train_length'],
+            (args['conv_feature'] + args['Hydrogen']) * args['adj_matrix'].shape[0] * args['enc_last'],
             args['embedding_feature'])
         self.fc_dec_gcn = torch.nn.Linear(
             (args['conv_feature'] + args['Hydrogen']) * args['adj_matrix'].shape[0] * args['forcast_window'],

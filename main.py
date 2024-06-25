@@ -1235,5 +1235,5 @@ if __name__ == '__main__':
     # Train_baseline(Rp_best)
     # Train_gcn_baseline(Rp_best)
 
-    Train_split(dataset_num=1, name='conv_lstm2', long=False, random=True)
+    Train_split(dataset_num=2, name='Transformer_gcn', long=True, random=True)
     # Train_split_select(dataset_num=3, name='Transformer_gcn')

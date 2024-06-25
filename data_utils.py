@@ -150,7 +150,7 @@ def read_csv2numpy(elec_path, hyd_path):
     elec_with_hyd = np.dstack((elec_demand, hyd_demand))
     print(elec_with_hyd.shape)
     elec_with_hyd = np.transpose(elec_with_hyd, (1,0,2))
-    return elec_with_hyd
+    return elec_with_hyd.astype(np.float32)
 
 # 获取时序信息表，采样时间为每15分钟。
 def get_time_list(elec_path):

@@ -1,4 +1,4 @@
-from graph_utils import get_graph_Dalian_xml_days
+from graph_utils import get_graph_Dalian_xml_days, normalize_adj
 import numpy as np
 from ProcessData import process_time
 import math
@@ -15,9 +15,11 @@ import pickle
 import networkx as nx
 from data_utils import read_csv2numpy, get_time_list
 from tqdm import tqdm
+from torch.utils.data import random_split
+from models.train_models import Train_all_models
 
 criterion = torch.nn.MSELoss()
-lr = 0.00001
+lr = 0.0001
 epochs = 10000
 train_epoch_loss = []
 Rp_best = 10
@@ -53,7 +55,7 @@ def train_gcn_epoch(model, train_dl, optimizer):
     model.train()
     train_loss = 0
     n = 0
-    for step, (x, src, tar, times) in enumerate(train_dl):
+    for step, (x, src, tar, times) in tqdm(enumerate(train_dl)):
         # [batch, time]
         tar_in = tar[:, :, :-1]
         tar_out = tar[:, :, 1:]  # [batch nodes, time ,...]
@@ -130,12 +132,37 @@ def test_GCN_Transform(model, test_dl, forcast_window=7):
     return Rp1, RMSE1[0], MAPE1[0], Rp2, RMSE2[0], MAPE2[0]
 
 
+def get_dataset(dataset, time_list, train_proportion=0.8, random=False, save=False):
+    num_train = int(dataset.shape[0] * train_proportion)
+    num_test = dataset.shape[0] - num_train
+    if random:
+        torch.manual_seed(0)  # 设置随机种子
+        train, test = random_split(dataset, [num_train, num_test])
+        print(train.indices)
+        print(test.indices)
+        train_dataset = dataset[train.indices]
+        test_dataset = dataset[test.indices]
+        X_train_time = time_list[train.indices]
+        X_test_time = time_list[test.indices]
+    else:
+        train_dataset = dataset[:num_train]
+        test_dataset = dataset[num_train:]
+        X_train_time = time_list[:num_train]
+        X_test_time = time_list[num_train:]
+    if save:
+        np.save('split_data/{}_long_train_dataset.npy'.format("Dalian"), train_dataset, allow_pickle=True)
+        np.save('split_data/{}_long_test_dataset.npy'.format("Dalian"), test_dataset, allow_pickle=True)
+        np.save('split_data/{}_long_train_timeset.npy'.format("Dalian"), X_train_time)
+        np.save('split_data/{}_long_test_timeset.npy'.format("Dalian"), X_test_time)
+    return train_dataset, test_dataset, X_train_time, X_test_time
+
+
 def process_dalian_gcn_data(G_timeseries_map, time_list, training_length, forecast_window,
-                            time=False, matrix=False):  # gcn 通过给定数组进行dataset分类
+                            time=False, matrix=False, random=False):  # gcn 通过给定数组进行dataset分类
     # G_timeseries_map [150, 96, 2]
     matrix_lags = np.zeros(
         (G_timeseries_map.shape[1] - (training_length + forecast_window),
-         G_timeseries_map.shape[0], training_length + forecast_window, G_timeseries_map.shape[-1]))
+         G_timeseries_map.shape[0], training_length + forecast_window, G_timeseries_map.shape[-1]), dtype=np.float32)
     print('G_timeseries_map.shape:', G_timeseries_map.shape)
     print('matrix_lags.shape:', matrix_lags.shape)  # [B. Node, T, e_H]
 
@@ -145,10 +172,17 @@ def process_dalian_gcn_data(G_timeseries_map, time_list, training_length, foreca
     for i in range(matrix_lags.shape[0]):
         matrix_lags[i] = G_timeseries_map[:, i:i + training_length + forecast_window]  # 批次 +
         # num_lags+prediction_horizont天数
-    # np.save('train_data_matrix/G_matrix_lags.npy', matrix_lags)
-    # np.save('train_data_matrix/G_long_matrix_lags.npy', matrix_lags)
     if matrix:
         return matrix_lags, process_time(time_list, training_length, forecast_window, matrix=True)
+    if random:
+        train_dataset, test_dataset, X_train_time, X_test_time = get_dataset(matrix_lags,
+                                                                             process_time(time_list, training_length,
+                                                                                          forecast_window, matrix=True),
+                                                                             random=random)
+        print('train_dataset:', train_dataset.shape)
+        print('test_dataset:', test_dataset.shape)
+        return train_dataset, test_dataset, X_train_time, X_test_time
+
     train_dataset = matrix_lags[:i_train]  # [batch, Node, T, e_H]
     test_dataset = matrix_lags[i_train:]  # [batch, Node, T, e_H]
     print('train_dataset:', train_dataset.shape)
@@ -196,8 +230,9 @@ def Train_Dalian_Gcn_Transform(Rp_best, data_xml, net_xml, train_length, forecas
 
         Rp1, RMSE1, MAPE1, Rp2, RMSE2, MAPE2 = test_GCN_Transform(model, test_dl, forecast_window)
 
-        if Rp_best > Rp1:
-            Rp_best = Rp1
+        # if Rp_best > Rp1:
+        #     Rp_best = Rp1
+        if e + 1 % 10 == 0:
             save_model(model, e + 1, train_length, Rp1)
         train_epoch_loss.append(np.mean(train_loss))
         end = time.time()
@@ -244,12 +279,12 @@ def Test_Dalian_Gcn_Transform(data_xml, net_xml, train_length, forecast_window, 
 
 # 读取电氢负荷数据，并进行训练预测
 def Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window,
-                                    normalize=True):
-    G_timeseries_map = read_csv2numpy(elec_path, hyd_path)
+                                    normalize=True, load=False):
+    G_timeseries_map = read_csv2numpy(elec_path, hyd_path)  # [N,all_T 2]
     time_list = get_time_list(elec_path)
     with open(graph_path, 'rb') as f:
         G = pickle.load(f)
-    A = nx.adjacency_matrix(G).todense()  # 返回图的邻接矩阵
+    A = nx.adjacency_matrix(G)  # 返回图的邻接矩阵
     A = torch.tensor(A, dtype=torch.float32).to(device)
     if normalize:
         max_ = np.amax(G_timeseries_map, axis=(0, 1))
@@ -260,7 +295,7 @@ def Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, tr
     train_dataset, test_dataset, X_train_time, X_test_time = \
         process_dalian_gcn_data(G_timeseries_map, time_list, training_length=train_length,
                                 forecast_window=forecast_window,
-                                time=True)
+                                time=True, random=True)  # [B, N ,T=trian+forcast, 2]
 
     train_data = SensorDataset_GCN(train_dataset, X_train_time, train_length, forecast_window)
     test_data = SensorDataset_GCN(test_dataset, X_test_time, train_length, forecast_window)
@@ -268,7 +303,11 @@ def Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, tr
     test_dl = DataLoader(test_data, batch_size=1)
     args = get_model_args(name='Transformer_gcn_Dalian', train_length=train_length, forcast_window=forecast_window,
                           X_train=train_dataset, adj_matrix=A)
-    model = select_model('Transformer_gcn_Dalian', args=args).to(device)
+    if load:
+        print("模型加载成功")
+        model = torch.load("train_process/model_last_length30.pkl")
+    else:
+        model = select_model('Transformer_gcn_Dalian', args=args).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'])
     files = os.listdir("train_process/")
     if len(files):  # 初始化文件夹里面的文件命
@@ -300,10 +339,38 @@ def Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, tr
     plot_Dalian_gcn_models(model, train_dl, train_length, forecast_window)
     plot_Dalian_gcn_models(model, test_dl, train_length, forecast_window, test=True)
 
-    # attn_layers = get_gcn_attn(model, test_dl.dataset[idx_example][0].unsqueeze(0),
-    #                            test_dl.dataset[idx_example][1].unsqueeze(0),
-    #                            test_dl.dataset[idx_example][2].unsqueeze(0))
-    # show_gcn_attn(test_data, attn_layers)
+
+def Train_Dalian_Test(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window,
+                      normalize=True, load=False, name="Transformer_gcn"):
+    G_timeseries_map = read_csv2numpy(elec_path, hyd_path)  # [N,all_T 2]
+    time_list = get_time_list(elec_path)
+    with open(graph_path, 'rb') as f:
+        G = pickle.load(f)
+    A = nx.adjacency_matrix(G)  # 返回图的邻接矩阵
+    A = normalize_adj(A).todense()
+    A = torch.tensor(A, dtype=torch.float32).to(device)
+    if normalize:
+        max_ = np.amax(G_timeseries_map, axis=(0, 1))
+        G_timeseries_map = G_timeseries_map / max_
+        G_timeseries_map[G_timeseries_map == 0] = np.random.normal(
+            np.zeros_like(G_timeseries_map[G_timeseries_map == 0]),
+            0.001)
+    dataset, time_list = process_dalian_gcn_data(G_timeseries_map, time_list, training_length=train_length,
+                                                 forecast_window=forecast_window,
+                                                 time=True, random=True, matrix=True)
+
+    dataset = dataset[:, :, :, -1]
+    # train_data = SensorDataset_GCN(train_dataset, X_train_time, train_length, forecast_window)
+    # test_data = SensorDataset_GCN(test_dataset, X_test_time, train_length, forecast_window)
+    # train_dl = DataLoader(train_data, batch_size=32, shuffle=True)  # [batch_size, Nodes, Times]
+    # test_dl = DataLoader(test_data, batch_size=1)
+    # args = get_model_args(name='Transformer_gcn_Dalian', train_length=train_length, forcast_window=forecast_window,
+    #                       X_train=train_dataset, adj_matrix=A)
+
+    Train = Train_all_models(name=name, dataset=dataset, time_list=time_list,
+                             train_length=train_length, forcast_window=forecast_window, A=A, max_=max_[-1], random=True,
+                             load=True)
+    Train.train(device)
 
 
 if __name__ == "__main__":
@@ -313,6 +380,7 @@ if __name__ == "__main__":
     hyd_path = "data/数据源/hyd_data.csv"
     graph_path = "train_data/GCN_Dalian_Graph.pkl"
     train_length = 30
-    forecast_window = 7
-    Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window)
+    forecast_window = 5
+    # Train_Dalian_Gcn_Transform_data(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window, load=True)
     # Test_Dalian_Gcn_Transform(data_xml, net_xml, train_length, forecast_window*5)
+    Train_Dalian_Test(Rp_best, elec_path, hyd_path, graph_path, train_length, forecast_window)

@@ -9,7 +9,7 @@ def calculate_laplacian(adj):  # 计算A~
     D = np.diag(np.ravel(adj.sum(axis=0)) ** (-0.5))
     adj = np.dot(D, np.dot(adj, D))
     adj = torch.tensor(adj, dtype=torch.float32)
-    return adj.to(device)
+    return adj
 
 
 class GraphConvolution(nn.Module):  # 图卷积层
@@ -84,6 +84,7 @@ class GCN_FIGURE(nn.Module):
     ):
         super(GCN_FIGURE, self).__init__()
 
+        # self.adj = calculate_laplacian(adj)
         self.adj = adj
         self.gc_layer_sizes = gc_layer_sizes
         self.feature_sizes = feature_sizes
